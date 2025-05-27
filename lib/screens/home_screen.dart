@@ -37,7 +37,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   void _navigateToRoomDetails(String roomId) {
-    context.push('${AppRoutes.room}/$roomId');
+    // Проверяем, авторизован ли пользователь
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) {
+      // Если не авторизован, показываем диалог с предложением войти
+      _showLoginDialog();
+    } else {
+      context.push('${AppRoutes.room}/$roomId');
+    }
+  }
+
+  void _showLoginDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Требуется авторизация'),
+        content: const Text(
+          'Чтобы присоединиться к игре, необходимо войти в аккаунт.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              context.push(AppRoutes.login);
+            },
+            child: const Text('Войти'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _logout() async {
@@ -58,8 +90,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       }
     }
   }
-
-
 
   Widget _buildRoomCard(RoomModel room) {
     return Card(
@@ -181,64 +211,147 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   Widget build(BuildContext context) {
     final activeRoomsAsync = ref.watch(activeRoomsProvider);
     final plannedRoomsAsync = ref.watch(plannedRoomsProvider);
+    final userAsync = ref.watch(currentUserProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text(AppStrings.appName),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go(AppRoutes.welcome),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () {
-              // Простая диагностика - показываем количество комнат
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Диагностика комнат'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Consumer(
-                        builder: (context, ref, child) {
-                          final activeRooms = ref.watch(activeRoomsProvider);
-                          final plannedRooms = ref.watch(plannedRoomsProvider);
-                          
-                          return Column(
-                            children: [
-                              activeRooms.when(
-                                loading: () => const Text('Загрузка активных...'),
-                                error: (e, s) => Text('Ошибка активных: $e'),
-                                data: (rooms) => Text('Активных игр: ${rooms.length}'),
+          userAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ),
+            error: (error, stack) => TextButton(
+              onPressed: () => context.push(AppRoutes.login),
+              child: const Text(
+                'Войти',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            data: (user) {
+              if (user == null) {
+                return TextButton(
+                  onPressed: () => context.push(AppRoutes.login),
+                  child: const Text(
+                    'Войти',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              } else {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.bug_report),
+                      onPressed: () {
+                        // Простая диагностика - показываем количество комнат
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Диагностика'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Пользователь: ${user.name}'),
+                                Text('Роль: ${_getRoleText(user.role)}'),
+                                const SizedBox(height: 16),
+                                Consumer(
+                                  builder: (context, ref, child) {
+                                    final activeRooms = ref.watch(activeRoomsProvider);
+                                    final plannedRooms = ref.watch(plannedRoomsProvider);
+                                    
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        activeRooms.when(
+                                          loading: () => const Text('Загрузка активных...'),
+                                          error: (e, s) => Text('Ошибка активных: $e'),
+                                          data: (rooms) => Text('Активных игр: ${rooms.length}'),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        plannedRooms.when(
+                                          loading: () => const Text('Загрузка запланированных...'),
+                                          error: (e, s) => Text('Ошибка запланированных: $e'),
+                                          data: (rooms) => Text('Запланированных игр: ${rooms.length}'),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text('Может создавать игры: ${user.role == UserRole.organizer || user.role == UserRole.admin ? "Да" : "Нет"}'),
+                                        const SizedBox(height: 16),
+                                        // Временная кнопка создания игры для тестирования
+                                        ElevatedButton.icon(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                            _navigateToCreateRoom();
+                                          },
+                                          icon: const Icon(Icons.add),
+                                          label: const Text('Создать игру (тест)'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Закрыть'),
                               ),
-                              const SizedBox(height: 8),
-                              plannedRooms.when(
-                                loading: () => const Text('Загрузка запланированных...'),
-                                error: (e, s) => Text('Ошибка запланированных: $e'),
-                                data: (rooms) => Text('Запланированных игр: ${rooms.length}'),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  // Принудительно обновляем данные пользователя
+                                  ref.invalidate(currentUserProvider);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Данные пользователя обновлены'),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  );
+                                },
+                                child: const Text('Обновить данные'),
                               ),
                             ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Закрыть'),
+                          ),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.person),
+                      onPressed: _navigateToProfile,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.logout),
+                      onPressed: _logout,
                     ),
                   ],
-                ),
-              );
+                );
+              }
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: _navigateToProfile,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
           ),
         ],
         bottom: TabBar(
@@ -320,21 +433,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         builder: (context, ref, child) {
           final userAsync = ref.watch(currentUserProvider);
           return userAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (error, stack) => const SizedBox.shrink(),
+            loading: () {
+              debugPrint('🔄 FloatingActionButton: Загрузка пользователя...');
+              return const SizedBox.shrink();
+            },
+            error: (error, stack) {
+              debugPrint('❌ FloatingActionButton: Ошибка загрузки пользователя: $error');
+              return const SizedBox.shrink();
+            },
             data: (user) {
+              debugPrint('👤 FloatingActionButton: Пользователь загружен');
+              debugPrint('   - ID: ${user?.id}');
+              debugPrint('   - Имя: ${user?.name}');
+              debugPrint('   - Роль: ${user?.role}');
+              debugPrint('   - Может создавать игры: ${user?.role == UserRole.organizer || user?.role == UserRole.admin}');
+              
               // Показываем кнопку только организаторам и админам
               if (user?.role == UserRole.organizer || user?.role == UserRole.admin) {
+                debugPrint('✅ FloatingActionButton: Показываем кнопку создания игры');
                 return FloatingActionButton(
                   onPressed: _navigateToCreateRoom,
                   child: const Icon(Icons.add),
                 );
+              } else {
+                debugPrint('🚫 FloatingActionButton: Скрываем кнопку (роль: ${user?.role})');
+                return const SizedBox.shrink();
               }
-              return const SizedBox.shrink();
             },
           );
         },
       ),
     );
+  }
+
+  String _getRoleText(UserRole role) {
+    switch (role) {
+      case UserRole.organizer:
+        return 'Организатор';
+      case UserRole.admin:
+        return 'Администратор';
+      case UserRole.user:
+        return 'Игрок';
+      default:
+        return 'Неизвестная роль';
+    }
   }
 } 

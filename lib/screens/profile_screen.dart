@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/providers.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -165,6 +166,40 @@ class ProfileScreen extends ConsumerWidget {
                         ),
                       ),
                       
+                      const SizedBox(height: AppSizes.smallSpace),
+                      
+                      // Временная кнопка для изменения роли (только для разработки)
+                      if (user.role == UserRole.user)
+                        ElevatedButton.icon(
+                          onPressed: () => _changeToOrganizer(context, ref, user),
+                          icon: const Icon(Icons.admin_panel_settings),
+                          label: const Text('Стать организатором'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.organizerRole,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSizes.mediumSpace,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      
+                      // Кнопка для возврата к роли пользователя
+                      if (user.role == UserRole.organizer)
+                        ElevatedButton.icon(
+                          onPressed: () => _changeToUser(context, ref, user),
+                          icon: const Icon(Icons.person),
+                          label: const Text('Стать обычным пользователем'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.userRole,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSizes.mediumSpace,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      
                       const SizedBox(height: AppSizes.largeSpace),
                       
                       // Статистика
@@ -323,5 +358,131 @@ class ProfileScreen extends ConsumerWidget {
       return name[0].toUpperCase();
     }
     return '';
+  }
+
+  void _changeToOrganizer(BuildContext context, WidgetRef ref, UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Изменить роль'),
+        content: const Text(
+          'Вы хотите стать организатором? Это даст вам возможность создавать игры.\n\n'
+          'Это временная функция для тестирования.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _updateUserRole(context, ref, user.id, UserRole.organizer);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.organizerRole,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Стать организатором'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _changeToUser(BuildContext context, WidgetRef ref, UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Изменить роль'),
+        content: const Text(
+          'Вы хотите стать обычным пользователем? Вы потеряете возможность создавать игры.\n\n'
+          'Это временная функция для тестирования.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _updateUserRole(context, ref, user.id, UserRole.user);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.userRole,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Стать пользователем'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateUserRole(BuildContext context, WidgetRef ref, String userId, UserRole newRole) async {
+    try {
+      debugPrint('🔄 Начинаем изменение роли пользователя...');
+      debugPrint('   - ID пользователя: $userId');
+      debugPrint('   - Новая роль: $newRole');
+      
+      // Показываем индикатор загрузки
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Обновляем роль напрямую в Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update({
+        'role': newRole.toString().split('.').last,
+        'updatedAt': Timestamp.now(),
+      });
+
+      debugPrint('✅ Роль успешно обновлена в Firestore');
+
+      // Закрываем индикатор загрузки
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Обновляем провайдер
+      debugPrint('🔄 Обновляем провайдер currentUserProvider...');
+      ref.invalidate(currentUserProvider);
+
+      // Показываем сообщение об успехе
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Роль успешно изменена на ${newRole.toString().split('.').last}! Теперь вы можете создавать игры.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+      
+      debugPrint('✅ Изменение роли завершено успешно');
+    } catch (e) {
+      debugPrint('❌ Ошибка при изменении роли: $e');
+      
+      // Закрываем индикатор загрузки
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Показываем ошибку
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка изменения роли: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 } 

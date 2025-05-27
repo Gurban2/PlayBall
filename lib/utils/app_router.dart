@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../screens/login_screen.dart';
 import '../screens/register_screen.dart';
 import '../screens/home_screen.dart';
+import '../screens/welcome_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/edit_profile_screen.dart';
 import '../screens/create_room_screen.dart';
@@ -16,26 +17,36 @@ class AppRouter {
   static final AuthService _authService = AuthService();
 
   static final GoRouter router = GoRouter(
-    initialLocation: AppRoutes.login,
+    initialLocation: AppRoutes.welcome,
     redirect: (BuildContext context, GoRouterState state) async {
       final isLoggedIn = await _authService.isUserLoggedIn();
       final currentPath = state.uri.path;
-      final isLoggingIn = currentPath == AppRoutes.login || 
-                         currentPath == AppRoutes.register;
-
-      // Если пользователь не авторизован и не на экране входа/регистрации
-      if (!isLoggedIn && !isLoggingIn) {
+      
+      // Страницы, которые требуют авторизации
+      final protectedRoutes = [
+        AppRoutes.profile,
+        AppRoutes.editProfile,
+        AppRoutes.createRoom,
+      ];
+      
+      // Проверяем, является ли текущий путь защищенным
+      final isProtectedRoute = protectedRoutes.any((route) => currentPath.startsWith(route));
+      
+      // Если пользователь не авторизован и пытается попасть на защищенную страницу
+      if (!isLoggedIn && isProtectedRoute) {
         return AppRoutes.login;
-      }
-
-      // Если пользователь авторизован и на экране входа/регистрации
-      if (isLoggedIn && isLoggingIn) {
-        return AppRoutes.home;
       }
 
       return null; // Не перенаправляем
     },
     routes: [
+      // Приветствующая страница
+      GoRoute(
+        path: AppRoutes.welcome,
+        name: 'welcome',
+        builder: (context, state) => const WelcomeScreen(),
+      ),
+
       // Экран входа
       GoRoute(
         path: AppRoutes.login,
@@ -50,7 +61,7 @@ class AppRouter {
         builder: (context, state) => const RegisterScreen(),
       ),
 
-      // Главный экран
+      // Главный экран (список игр)
       GoRoute(
         path: AppRoutes.home,
         name: 'home',
@@ -140,7 +151,7 @@ class AppRouter {
             ),
             const SizedBox(height: AppSizes.largeSpace),
             ElevatedButton(
-              onPressed: () => context.go(AppRoutes.home),
+              onPressed: () => context.go(AppRoutes.welcome),
               child: const Text('На главную'),
             ),
           ],
