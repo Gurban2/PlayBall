@@ -1,0 +1,53 @@
+name: volleyball_app
+description: "PlayBall - Приложение для организации спортивных игр"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  
+  # Firebase
+  firebase_core: ^3.13.1
+  firebase_auth: ^5.5.4
+  cloud_firestore: ^5.6.8
+  firebase_storage: ^12.4.6
+  firebase_app_check: ^0.3.2+6
+  
+  # Маршрутизация
+  go_router: ^15.1.2
+  
+  # Управление состоянием
+  flutter_riverpod: ^2.4.9
+  
+  # Другие пакеты
+  uuid: ^4.5.1
+  intl: ^0.20.2
+  # flutter_local_notifications: ^15.1.0+1
+  image_picker: ^1.0.2
+  # cached_network_image: ^3.2.3
+  # flutter_rating_bar: ^4.0.1
+  # shared_preferences: ^2.2.0
+  # flutter_riverpod: ^2.3.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # build_runner: ^2.4.6
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+  # Временно отключаем шрифты
+  # fonts:
+  #   - family: Roboto
+  #     fonts:
+  #       - asset: assets/fonts/Roboto-Regular.ttf
+  #       - asset: assets/fonts/Roboto-Bold.ttf
+  #         weight: 700 

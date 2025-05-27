@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Правила для тестовых коллекций (разрешаем все операции для разработки)
+    match /test/{document=**} {
+      allow read, write: if true;
+    }
+    
+    match /test_rooms/{document=**} {
+      allow read, write: if true;
+    }
+    
+    match /_test_connection/{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Правила для основных коллекций
+    match /users/{userId} {
+      // Пользователи могут читать и изменять только свои данные
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /rooms/{roomId} {
+      // Все авторизованные пользователи могут читать комнаты
+      allow read: if request.auth != null;
+      
+      // Создавать комнаты могут только авторизованные пользователи
+      allow create: if request.auth != null 
+        && request.auth.uid == resource.data.createdBy;
+      
+      // Изменять комнаты может только создатель
+      allow update: if request.auth != null 
+        && request.auth.uid == resource.data.createdBy;
+      
+      // Удалять комнаты может только создатель
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.createdBy;
+    }
+    
+    match /games/{gameId} {
+      // Все авторизованные пользователи могут читать игры
+      allow read: if request.auth != null;
+      
+      // Создавать игры могут только авторизованные пользователи
+      allow create: if request.auth != null;
+      
+      // Изменять игры может создатель или участники
+      allow update: if request.auth != null 
+        && (request.auth.uid == resource.data.createdBy 
+            || request.auth.uid in resource.data.players);
+    }
+    
+    // Временные правила для разработки - разрешаем все операции
+    // ВНИМАНИЕ: Удалите эти правила в продакшене!
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+} 
