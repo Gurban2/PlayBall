@@ -43,8 +43,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Firebase
-firebase_options.dart
+# Firebase локальные файлы (временные)
+.firebase/
+firebase-debug.log
+firestore-debug.log
 
 # Windows
 windows/flutter/generated_plugin_registrant.cc
@@ -62,5 +64,5 @@ coverage/
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 
 # Firebase local configuration
-google-services.json
-GoogleService-Info.plist 
+# google-services.json
+# GoogleService-Info.plist 

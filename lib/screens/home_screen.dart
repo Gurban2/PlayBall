@@ -15,11 +15,24 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  String _selectedLocation = 'Все локации';
+  GameMode? _selectedGameMode;
+  RoomStatus? _selectedStatus;
+  bool _showMyGamesOnly = false;
+  String _myGamesSortBy = 'Дата создания';
+
+  final List<String> _sortOptions = [
+    'Дата создания',
+    'Время начала',
+    'Название',
+    'Количество участников',
+    'Статус',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -76,6 +89,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     try {
       final authService = ref.read(authServiceProvider);
       await authService.signOut();
+      
+      // Очищаем все провайдеры, связанные с пользователем
+      ref.invalidate(currentUserProvider);
+      ref.invalidate(activeRoomsProvider);
+      ref.invalidate(plannedRoomsProvider);
+      ref.invalidate(userRoomsProvider);
+      
       if (mounted) {
         context.go(AppRoutes.login);
       }
@@ -101,110 +121,176 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       child: InkWell(
         onTap: () => _navigateToRoomDetails(room.id),
         borderRadius: BorderRadius.circular(AppSizes.cardRadius),
-        child: Padding(
-          padding: AppSizes.cardPadding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      room.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Фотография комнаты (если есть)
+            if (room.photoUrl != null && room.photoUrl!.isNotEmpty)
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(AppSizes.cardRadius),
+                  topRight: Radius.circular(AppSizes.cardRadius),
+                ),
+                child: Image.network(
+                  room.photoUrl!,
+                  height: 150,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 150,
+                      width: double.infinity,
+                      color: Colors.grey[300],
+                      child: const Icon(
+                        Icons.image_not_supported,
+                        size: 50,
+                        color: Colors.grey,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: room.status == RoomStatus.active
-                          ? AppColors.primary
-                          : AppColors.secondary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      room.status == RoomStatus.active
-                          ? AppStrings.active
-                          : AppStrings.planned,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
+                    );
+                  },
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 150,
+                      width: double.infinity,
+                      color: Colors.grey[200],
+                      child: const Center(
+                        child: CircularProgressIndicator(),
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: AppSizes.smallSpace),
-              Text(
-                room.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: AppSizes.smallSpace),
-              Row(
+            
+            Padding(
+              padding: AppSizes.cardPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.location_on,
-                    size: AppSizes.smallIconSize,
-                    color: AppColors.textSecondary,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          room.title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: room.status == RoomStatus.active
+                              ? AppColors.primary
+                              : AppColors.secondary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          room.status == RoomStatus.active
+                              ? AppStrings.active
+                              : AppStrings.planned,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      room.location,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.access_time,
-                    size: AppSizes.smallIconSize,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
+                  const SizedBox(height: AppSizes.smallSpace),
                   Text(
-                    '${room.startTime.day}.${room.startTime.month}.${room.startTime.year} ${room.startTime.hour}:${room.startTime.minute.toString().padLeft(2, '0')}',
+                    room.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: AppColors.textSecondary),
                   ),
+                  const SizedBox(height: AppSizes.smallSpace),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          room.location,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time,
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${room.startTime.day}.${room.startTime.month}.${room.startTime.year} ${room.startTime.hour}:${room.startTime.minute.toString().padLeft(2, '0')}',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.people,
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${room.participants.length}/${room.maxParticipants}',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.people,
-                    size: AppSizes.smallIconSize,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${room.participants.length}/${room.maxParticipants}',
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
-
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  List<RoomModel> _sortUserRooms(List<RoomModel> rooms) {
+    List<RoomModel> sortedRooms = List.from(rooms);
+    
+    switch (_myGamesSortBy) {
+      case 'Дата создания':
+        sortedRooms.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case 'Время начала':
+        sortedRooms.sort((a, b) => a.startTime.compareTo(b.startTime));
+        break;
+      case 'Название':
+        sortedRooms.sort((a, b) => a.title.compareTo(b.title));
+        break;
+      case 'Количество участников':
+        sortedRooms.sort((a, b) => b.participants.length.compareTo(a.participants.length));
+        break;
+      case 'Статус':
+        sortedRooms.sort((a, b) => a.status.index.compareTo(b.status.index));
+        break;
+    }
+    
+    return sortedRooms;
   }
 
   @override
@@ -222,6 +308,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
           onPressed: () => context.go(AppRoutes.welcome),
         ),
         actions: [
+          // Кнопка поиска
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => context.push('/search'),
+          ),
           userAsync.when(
             loading: () => const Padding(
               padding: EdgeInsets.all(16.0),
@@ -359,6 +450,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
           tabs: const [
             Tab(text: 'Активные игры'),
             Tab(text: 'Запланированные'),
+            Tab(text: 'Мои игры'),
           ],
         ),
       ),
@@ -426,6 +518,134 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                       },
                     ),
                   ),
+          ),
+          // Мои игры
+          Consumer(
+            builder: (context, ref, child) {
+              final userRoomsAsync = ref.watch(userRoomsProvider);
+              return userRoomsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, stack) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, size: 64, color: AppColors.error),
+                      const SizedBox(height: 16),
+                      Text('Ошибка загрузки: $error'),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => ref.refresh(userRoomsProvider),
+                        child: const Text('Повторить'),
+                      ),
+                    ],
+                  ),
+                ),
+                data: (userRooms) {
+                  if (userRooms.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.sports_volleyball_outlined,
+                            size: 64,
+                            color: AppColors.textSecondary,
+                          ),
+                          SizedBox(height: 16),
+                          Text('Нет ваших игр'),
+                          SizedBox(height: 8),
+                          Text(
+                            'Присоединяйтесь к играм или создайте свою!',
+                            style: TextStyle(color: AppColors.textSecondary),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  
+                  final sortedRooms = _sortUserRooms(userRooms);
+                  
+                  return Column(
+                    children: [
+                      // Панель сортировки
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withValues(alpha: 0.1),
+                              spreadRadius: 1,
+                              blurRadius: 3,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.sort, color: AppColors.textSecondary, size: 20),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Сортировка:',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: AppColors.divider),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _myGamesSortBy,
+                                    isExpanded: true,
+                                    style: const TextStyle(
+                                      color: AppColors.text,
+                                      fontSize: 14,
+                                    ),
+                                    items: _sortOptions.map((option) {
+                                      return DropdownMenuItem(
+                                        value: option,
+                                        child: Text(option),
+                                      );
+                                    }).toList(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _myGamesSortBy = value!;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Список игр
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: () async => ref.refresh(userRoomsProvider),
+                          child: ListView.builder(
+                            padding: AppSizes.screenPadding,
+                            itemCount: sortedRooms.length,
+                            itemBuilder: (context, index) {
+                              return _buildRoomCard(sortedRooms[index]);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
           ),
         ],
       ),

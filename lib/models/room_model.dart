@@ -7,6 +7,11 @@ enum RoomStatus {
   cancelled,
 }
 
+enum GameMode {
+  friendly,
+  tournament,
+}
+
 class RoomModel {
   final String id;
   final String title;
@@ -18,6 +23,7 @@ class RoomModel {
   final List<String> participants;
   final int maxParticipants;
   final RoomStatus status;
+  final GameMode gameMode;
   final double pricePerPerson;
   final String? photoUrl;
   final int numberOfTeams;
@@ -37,6 +43,7 @@ class RoomModel {
     this.participants = const [],
     required this.maxParticipants,
     this.status = RoomStatus.planned,
+    this.gameMode = GameMode.friendly,
     required this.pricePerPerson,
     this.photoUrl,
     this.numberOfTeams = 2,
@@ -55,6 +62,7 @@ class RoomModel {
     List<String>? participants,
     int? maxParticipants,
     RoomStatus? status,
+    GameMode? gameMode,
     double? pricePerPerson,
     String? photoUrl,
     int? numberOfTeams,
@@ -73,6 +81,7 @@ class RoomModel {
       participants: participants ?? this.participants,
       maxParticipants: maxParticipants ?? this.maxParticipants,
       status: status ?? this.status,
+      gameMode: gameMode ?? this.gameMode,
       pricePerPerson: pricePerPerson ?? this.pricePerPerson,
       photoUrl: photoUrl ?? this.photoUrl,
       numberOfTeams: numberOfTeams ?? this.numberOfTeams,
@@ -95,6 +104,7 @@ class RoomModel {
       'participants': participants,
       'maxParticipants': maxParticipants,
       'status': status.toString().split('.').last,
+      'gameMode': gameMode.toString().split('.').last,
       'pricePerPerson': pricePerPerson,
       'photoUrl': photoUrl,
       'numberOfTeams': numberOfTeams,
@@ -121,6 +131,7 @@ class RoomModel {
       participants: List<String>.from(map['participants'] ?? []),
       maxParticipants: map['maxParticipants'] ?? 0,
       status: _statusFromString(map['status'] as String?),
+      gameMode: _gameModeFromString(map['gameMode'] as String?),
       pricePerPerson: (map['pricePerPerson'] ?? 0).toDouble(),
       photoUrl: map['photoUrl'],
       numberOfTeams: map['numberOfTeams'] ?? 2,
@@ -146,6 +157,17 @@ class RoomModel {
       case 'planned':
       default:
         return RoomStatus.planned;
+    }
+  }
+
+  static GameMode _gameModeFromString(String? gameMode) {
+    switch (gameMode) {
+      case 'friendly':
+        return GameMode.friendly;
+      case 'tournament':
+        return GameMode.tournament;
+      default:
+        return GameMode.friendly;
     }
   }
 

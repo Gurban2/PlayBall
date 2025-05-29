@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../models/room_model.dart';
 import '../models/user_model.dart';
 import '../models/team_model.dart';
+import '../models/player_evaluation_model.dart';
 import '../utils/constants.dart';
 import 'package:uuid/uuid.dart';
+import 'package:flutter/foundation.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -68,18 +70,47 @@ class FirestoreService {
     required int maxParticipants,
     required double pricePerPerson,
     required int numberOfTeams,
+    required GameMode gameMode,
     String? photoUrl,
+    List<String>? teamNames, // Новый параметр для названий команд
   }) async {
     try {
-      // Проверяем лимит незавершенных игр
-      final canCreate = await canOrganizerCreateRoom(organizerId);
-      if (!canCreate) {
-        final activeCount = await getOrganizerActiveRoomsCount(organizerId);
-        throw Exception(
-          'Превышен лимит незавершенных игр. У вас уже есть $activeCount активных игр. '
-          'Максимум разрешено 3 незавершенные игры одновременно. '
-          'Завершите или отмените существующие игры перед созданием новых.'
+      // Валидация
+      if (title.trim().isEmpty) throw Exception('Название не может быть пустым');
+      if (location.trim().isEmpty) throw Exception('Локация не может быть пустой');
+      if (maxParticipants < 4) throw Exception('Минимум 4 участника');
+      if (numberOfTeams < 2) throw Exception('Минимум 2 команды');
+      if (endTime.isBefore(startTime)) throw Exception('Время окончания должно быть позже времени начала');
+
+      // Проверяем лимит активных комнат для организатора
+      final activeRoomsCount = await getOrganizerActiveRoomsCount(organizerId);
+      if (activeRoomsCount >= 5) {
+        throw Exception('Превышен лимит незавершенных игр (максимум 5). Завершите существующие игры перед созданием новых.');
+      }
+
+      // Проверяем конфликты локации
+      final hasConflict = await checkLocationConflictForCreation(
+        location: location,
+        startTime: startTime,
+        endTime: endTime,
+      );
+      
+      if (hasConflict) {
+        // Получаем информацию о конфликтующей игре
+        final conflictingRoom = await getConflictingRoomForCreation(
+          location: location,
+          startTime: startTime,
+          endTime: endTime,
         );
+        
+        String conflictMessage = 'В локации "$location" уже запланирована игра на это время.';
+        if (conflictingRoom != null) {
+          final conflictStart = '${conflictingRoom.startTime.hour}:${conflictingRoom.startTime.minute.toString().padLeft(2, '0')}';
+          final conflictEnd = '${conflictingRoom.endTime.hour}:${conflictingRoom.endTime.minute.toString().padLeft(2, '0')}';
+          conflictMessage += '\n\nКонфликтующая игра: "${conflictingRoom.title}"\nВремя: $conflictStart - $conflictEnd';
+        }
+        
+        throw Exception(conflictMessage);
       }
 
       final String roomId = _uuid.v4();
@@ -97,17 +128,18 @@ class FirestoreService {
         numberOfTeams: numberOfTeams,
         photoUrl: photoUrl,
         createdAt: DateTime.now(),
+        gameMode: gameMode,
       );
 
-      // Создаем комнату
+      // Создаем комнату в Firestore
       await _firestore.collection('rooms').doc(roomId).set(newRoom.toMap());
-      
-      // Создаем команды для комнаты
-      await _createTeamsForRoom(roomId, numberOfTeams);
-      
+
+      // Создаем команды для комнаты с кастомными названиями
+      await _createTeamsForRoom(roomId, numberOfTeams, teamNames);
+
       // Добавляем организатора в первую команду
       await _addOrganizerToFirstTeam(roomId, organizerId);
-      
+
       return roomId;
     } catch (e) {
       debugPrint('Ошибка создания комнаты: $e');
@@ -309,6 +341,21 @@ class FirestoreService {
         });
   }
 
+  // Stream для всех комнат (для поиска)
+  Stream<List<RoomModel>> getAllRoomsStream() {
+    return _firestore
+        .collection('rooms')
+        .snapshots()
+        .map((snapshot) {
+          final rooms = snapshot.docs
+              .map((doc) => RoomModel.fromMap(doc.data()))
+              .toList();
+          // Сортируем по времени начала
+          rooms.sort((a, b) => a.startTime.compareTo(b.startTime));
+          return rooms;
+        });
+  }
+
   // Обновление комнаты
   Future<void> updateRoom({
     required String roomId,
@@ -320,6 +367,7 @@ class FirestoreService {
     int? maxParticipants,
     RoomStatus? status,
     double? pricePerPerson,
+    String? photoUrl,
   }) async {
     try {
       final Map<String, dynamic> updates = {};
@@ -332,6 +380,7 @@ class FirestoreService {
       if (maxParticipants != null) updates['maxParticipants'] = maxParticipants;
       if (status != null) updates['status'] = status.toString().split('.').last;
       if (pricePerPerson != null) updates['pricePerPerson'] = pricePerPerson;
+      if (photoUrl != null) updates['photoUrl'] = photoUrl;
       
       updates['updatedAt'] = Timestamp.now();
       
@@ -497,11 +546,11 @@ class FirestoreService {
             name: 'Организатор 1',
             role: UserRole.organizer,
             createdAt: DateTime.now().subtract(const Duration(days: 30)),
-            lastLogin: DateTime.now().subtract(const Duration(hours: 5)),
+            lastActiveAt: DateTime.now().subtract(const Duration(hours: 5)),
             gamesPlayed: 42,
             wins: 28,
             losses: 14,
-            rating: 5,
+            rating: 5.0,
           );
         }
         return null;
@@ -531,11 +580,11 @@ class FirestoreService {
             name: 'Пользователь 1',
             role: UserRole.user,
             createdAt: DateTime.now().subtract(const Duration(days: 45)),
-            lastLogin: DateTime.now().subtract(const Duration(days: 1)),
+            lastActiveAt: DateTime.now().subtract(const Duration(days: 1)),
             gamesPlayed: 15,
             wins: 8,
             losses: 7,
-            rating: 4,
+            rating: 4.0,
           ),
           UserModel(
             id: 'org-user-1',
@@ -543,11 +592,11 @@ class FirestoreService {
             name: 'Организатор 1',
             role: UserRole.organizer,
             createdAt: DateTime.now().subtract(const Duration(days: 30)),
-            lastLogin: DateTime.now().subtract(const Duration(hours: 5)),
+            lastActiveAt: DateTime.now().subtract(const Duration(hours: 5)),
             gamesPlayed: 42,
             wins: 28,
             losses: 14,
-            rating: 5,
+            rating: 5.0,
           ),
         ];
       }
@@ -565,10 +614,11 @@ class FirestoreService {
           name: 'Пользователь 1',
           role: UserRole.user,
           createdAt: DateTime.now().subtract(const Duration(days: 45)),
+          lastActiveAt: DateTime.now().subtract(const Duration(days: 1)),
           gamesPlayed: 15,
           wins: 8,
           losses: 7,
-          rating: 4,
+          rating: 4.0,
         ),
       ];
     }
@@ -617,7 +667,7 @@ class FirestoreService {
   // МЕТОДЫ ДЛЯ РАБОТЫ С КОМАНДАМИ
 
   // Создание команд для комнаты
-  Future<void> _createTeamsForRoom(String roomId, int numberOfTeams) async {
+  Future<void> _createTeamsForRoom(String roomId, int numberOfTeams, List<String>? teamNames) async {
     try {
       final batch = _firestore.batch();
       
@@ -625,7 +675,7 @@ class FirestoreService {
         final teamId = _uuid.v4();
         final team = TeamModel(
           id: teamId,
-          name: 'Команда $i',
+          name: (teamNames != null && teamNames.length >= i) ? teamNames[i - 1] : 'Команда $i',
           roomId: roomId,
           createdAt: DateTime.now(),
         );
@@ -773,6 +823,11 @@ class FirestoreService {
       }
 
       await batch.commit();
+
+      // Начисляем баллы за присоединение к игре (только если пользователь не организатор)
+      if (room.organizerId != userId) {
+        await awardJoinGamePoints(userId);
+      }
     } catch (e) {
       debugPrint('Ошибка присоединения к команде: $e');
       rethrow;
@@ -866,6 +921,644 @@ class FirestoreService {
     } catch (e) {
       debugPrint('Ошибка получения команды: $e');
       return null;
+    }
+  }
+
+  // Проверка конфликтов локаций
+  Future<bool> checkLocationConflict({
+    required String location,
+    required DateTime startTime,
+    required DateTime endTime,
+    String? excludeRoomId, // Исключить текущую комнату из проверки
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection('rooms')
+          .where('location', isEqualTo: location)
+          .where('status', isEqualTo: RoomStatus.active.toString().split('.').last)
+          .get();
+      
+      for (final doc in snapshot.docs) {
+        final room = RoomModel.fromMap(doc.data());
+        
+        // Исключаем текущую комнату из проверки
+        if (excludeRoomId != null && room.id == excludeRoomId) {
+          continue;
+        }
+        
+        // Проверяем пересечение времени
+        // Конфликт есть, если новая игра начинается до окончания существующей
+        if (startTime.isBefore(room.endTime) && endTime.isAfter(room.startTime)) {
+          debugPrint('Конфликт локации: ${room.id} (${room.startTime} - ${room.endTime})');
+          return true; // Есть конфликт
+        }
+      }
+      
+      return false; // Конфликтов нет
+    } catch (e) {
+      debugPrint('Ошибка проверки конфликта локации: $e');
+      return true; // В случае ошибки считаем, что есть конфликт (безопасность)
+    }
+  }
+
+  // Получение информации о конфликтующей игре
+  Future<RoomModel?> getConflictingRoom({
+    required String location,
+    required DateTime startTime,
+    required DateTime endTime,
+    String? excludeRoomId,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection('rooms')
+          .where('location', isEqualTo: location)
+          .where('status', isEqualTo: RoomStatus.active.toString().split('.').last)
+          .get();
+      
+      for (final doc in snapshot.docs) {
+        final room = RoomModel.fromMap(doc.data());
+        
+        if (excludeRoomId != null && room.id == excludeRoomId) {
+          continue;
+        }
+        
+        if (startTime.isBefore(room.endTime) && endTime.isAfter(room.startTime)) {
+          return room; // Возвращаем конфликтующую комнату
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('Ошибка получения конфликтующей комнаты: $e');
+      return null;
+    }
+  }
+
+  // Проверка конфликтов локаций для создания новой игры (проверяет и активные, и запланированные игры)
+  Future<bool> checkLocationConflictForCreation({
+    required String location,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    try {
+      // Получаем все игры в данной локации (активные и запланированные)
+      final snapshot = await _firestore
+          .collection('rooms')
+          .where('location', isEqualTo: location)
+          .get();
+      
+      for (final doc in snapshot.docs) {
+        final room = RoomModel.fromMap(doc.data());
+        
+        // Проверяем только активные и запланированные игры
+        if (room.status != RoomStatus.active && room.status != RoomStatus.planned) {
+          continue;
+        }
+        
+        // Проверяем пересечение времени
+        // Конфликт есть, если новая игра пересекается по времени с существующей
+        if (startTime.isBefore(room.endTime) && endTime.isAfter(room.startTime)) {
+          debugPrint('Конфликт локации при создании: ${room.id} (${room.startTime} - ${room.endTime})');
+          return true; // Есть конфликт
+        }
+      }
+      
+      return false; // Конфликтов нет
+    } catch (e) {
+      debugPrint('Ошибка проверки конфликта локации при создании: $e');
+      return true; // В случае ошибки считаем, что есть конфликт (безопасность)
+    }
+  }
+
+  // Получение информации о конфликтующей игре при создании
+  Future<RoomModel?> getConflictingRoomForCreation({
+    required String location,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    try {
+      final snapshot = await _firestore
+          .collection('rooms')
+          .where('location', isEqualTo: location)
+          .get();
+      
+      for (final doc in snapshot.docs) {
+        final room = RoomModel.fromMap(doc.data());
+        
+        // Проверяем только активные и запланированные игры
+        if (room.status != RoomStatus.active && room.status != RoomStatus.planned) {
+          continue;
+        }
+        
+        if (startTime.isBefore(room.endTime) && endTime.isAfter(room.startTime)) {
+          return room; // Возвращаем конфликтующую комнату
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('Ошибка получения конфликтующей комнаты при создании: $e');
+      return null;
+    }
+  }
+
+  // НОВЫЕ МЕТОДЫ ДЛЯ СИСТЕМЫ БАЛЛОВ И СТАТИСТИКИ
+
+  // Начисление баллов за присоединение к игре
+  Future<void> awardJoinGamePoints(String userId) async {
+    try {
+      const int joinPoints = 2;
+      
+      await _updatePlayerScore(
+        userId: userId,
+        pointsToAdd: joinPoints,
+        activityMessage: 'Ты получил +$joinPoints за вход в комнату',
+      );
+    } catch (e) {
+      debugPrint('Ошибка начисления баллов за присоединение: $e');
+    }
+  }
+
+  // Обновленный метод завершения игры с новой системой баллов
+  Future<void> completeGameWithNewScoring({
+    required String roomId,
+    required String winnerTeamId,
+    required Map<String, dynamic> gameStats,
+  }) async {
+    try {
+      // Обновляем статус игры
+      await _firestore.collection('rooms').doc(roomId).update({
+        'status': RoomStatus.completed.toString().split('.').last,
+        'winnerTeamId': winnerTeamId,
+        'gameStats': gameStats,
+        'updatedAt': Timestamp.now(),
+      });
+      
+      // Обновляем статистику игроков с новой системой баллов
+      await _updatePlayersStatsWithNewScoring(roomId, winnerTeamId, gameStats);
+      
+      // Обновляем статистику партнерства
+      await _updateTeammateStats(roomId, gameStats);
+      
+    } catch (e) {
+      debugPrint('Ошибка завершения игры: $e');
+      rethrow;
+    }
+  }
+
+  // Обновленный метод обновления статистики игроков
+  Future<void> _updatePlayersStatsWithNewScoring(
+    String roomId,
+    String winnerTeamId,
+    Map<String, dynamic> gameStats,
+  ) async {
+    try {
+      final room = await getRoomById(roomId);
+      if (room == null) return;
+      
+      final batch = _firestore.batch();
+      
+      // Получаем команды для определения победителей
+      final teams = await getTeamsForRoom(roomId);
+      final winnerTeam = teams.firstWhere((team) => team.id == winnerTeamId);
+      
+      for (final userId in room.participants) {
+        final userRef = _firestore.collection('users').doc(userId);
+        final userDoc = await userRef.get();
+        
+        if (!userDoc.exists) continue;
+        
+        final userData = userDoc.data()!;
+        final currentUser = UserModel.fromMap(userData);
+        
+        // Определяем, победил ли игрок
+        final bool isWinner = winnerTeam.members.contains(userId);
+        
+        // Начисляем баллы за результат игры
+        final int gameResultPoints = isWinner ? 1 : -1;
+        
+        // Обновляем основную статистику
+        final updatedGamesPlayed = currentUser.gamesPlayed + 1;
+        final updatedWins = isWinner ? currentUser.wins + 1 : currentUser.wins;
+        final updatedLosses = !isWinner ? currentUser.losses + 1 : currentUser.losses;
+        final updatedTotalScore = currentUser.totalScore + gameResultPoints;
+        
+        // Создаем запись об игре для истории
+        final gameRef = GameRef(
+          id: roomId,
+          title: room.title,
+          location: room.location,
+          date: room.startTime,
+          result: isWinner ? 'win' : 'loss',
+          teammates: winnerTeam.members.where((id) => id != userId).toList(),
+        );
+        
+        // Обновляем список последних игр (максимум 5)
+        final updatedRecentGames = [gameRef, ...currentUser.recentGames];
+        if (updatedRecentGames.length > 5) {
+          updatedRecentGames.removeRange(5, updatedRecentGames.length);
+        }
+        
+        // Добавляем событие в ленту активности
+        final activityMessage = isWinner 
+            ? 'Ты получил +1 за победу в игре "${room.title}"'
+            : 'Ты получил -1 за поражение в игре "${room.title}"';
+        
+        final updatedActivityFeed = [activityMessage, ...currentUser.activityFeed];
+        if (updatedActivityFeed.length > 20) {
+          updatedActivityFeed.removeRange(20, updatedActivityFeed.length);
+        }
+        
+        // Проверяем и добавляем достижения
+        final newAchievements = _checkForNewAchievements(
+          currentUser.copyWith(
+            gamesPlayed: updatedGamesPlayed,
+            wins: updatedWins,
+            losses: updatedLosses,
+            totalScore: updatedTotalScore,
+          ),
+        );
+        
+        final updatedAchievements = [...currentUser.achievements];
+        for (final achievement in newAchievements) {
+          if (!updatedAchievements.contains(achievement)) {
+            updatedAchievements.add(achievement);
+            updatedActivityFeed.insert(0, 'Ты получил значок "$achievement"!');
+          }
+        }
+        
+        // Обновляем пользователя
+        batch.update(userRef, {
+          'gamesPlayed': updatedGamesPlayed,
+          'wins': updatedWins,
+          'losses': updatedLosses,
+          'totalScore': updatedTotalScore,
+          'recentGames': updatedRecentGames.map((game) => game.toMap()).toList(),
+          'activityFeed': updatedActivityFeed.take(20).toList(),
+          'achievements': updatedAchievements,
+          'updatedAt': Timestamp.now(),
+        });
+      }
+      
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Ошибка обновления статистики игроков: $e');
+    }
+  }
+
+  // Проверка новых достижений
+  List<String> _checkForNewAchievements(UserModel user) {
+    final achievements = <String>[];
+    
+    // Достижения за количество игр
+    if (user.gamesPlayed == 1) achievements.add('Первая игра');
+    if (user.gamesPlayed == 10) achievements.add('Десяток игр');
+    if (user.gamesPlayed == 50) achievements.add('Полсотни игр');
+    if (user.gamesPlayed == 100) achievements.add('Сотня игр');
+    
+    // Достижения за победы
+    if (user.wins == 1) achievements.add('Первая победа');
+    if (user.wins == 10) achievements.add('10 побед');
+    if (user.wins == 25) achievements.add('25 побед');
+    if (user.wins == 50) achievements.add('50 побед');
+    
+    // Достижения за винрейт
+    if (user.gamesPlayed >= 10 && user.winRate >= 80) {
+      achievements.add('Мастер побед');
+    }
+    if (user.gamesPlayed >= 20 && user.winRate >= 90) {
+      achievements.add('Легенда');
+    }
+    
+    // Достижения за баллы
+    if (user.totalScore >= 50) achievements.add('50 баллов');
+    if (user.totalScore >= 100) achievements.add('100 баллов');
+    if (user.totalScore >= 200) achievements.add('200 баллов');
+    
+    return achievements;
+  }
+
+  // Обновление статистики партнерства
+  Future<void> _updateTeammateStats(String roomId, Map<String, dynamic> gameStats) async {
+    try {
+      final teams = await getTeamsForRoom(roomId);
+      
+      for (final team in teams) {
+        if (team.members.length < 2) continue;
+        
+        // Для каждой пары игроков в команде обновляем статистику
+        for (int i = 0; i < team.members.length; i++) {
+          for (int j = i + 1; j < team.members.length; j++) {
+            final player1Id = team.members[i];
+            final player2Id = team.members[j];
+            
+            await _updatePartnershipStats(player1Id, player2Id);
+            await _updatePartnershipStats(player2Id, player1Id);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Ошибка обновления статистики партнерства: $e');
+    }
+  }
+
+  // Обновление статистики партнерства между двумя игроками
+  Future<void> _updatePartnershipStats(String playerId, String partnerId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(playerId).get();
+      if (!userDoc.exists) return;
+      
+      final user = UserModel.fromMap(userDoc.data()!);
+      final partnerUser = await getUserById(partnerId);
+      if (partnerUser == null) return;
+      
+      // Находим существующую запись о партнере
+      final existingPartnerIndex = user.bestTeammates.indexWhere(
+        (teammate) => teammate.id == partnerId,
+      );
+      
+      List<PlayerRef> updatedTeammates = [...user.bestTeammates];
+      
+      if (existingPartnerIndex != -1) {
+        // Обновляем существующую запись
+        final existing = updatedTeammates[existingPartnerIndex];
+        updatedTeammates[existingPartnerIndex] = PlayerRef(
+          id: existing.id,
+          name: partnerUser.name,
+          gamesPlayedTogether: existing.gamesPlayedTogether + 1,
+          winsTogetherCount: existing.winsTogetherCount + 1, // Упрощенно считаем, что играли в одной команде
+          winRateTogether: ((existing.winsTogetherCount + 1) / (existing.gamesPlayedTogether + 1)) * 100,
+        );
+      } else {
+        // Добавляем нового партнера
+        updatedTeammates.add(PlayerRef(
+          id: partnerId,
+          name: partnerUser.name,
+          gamesPlayedTogether: 1,
+          winsTogetherCount: 1,
+          winRateTogether: 100.0,
+        ));
+      }
+      
+      // Сортируем по количеству совместных игр и оставляем топ-5
+      updatedTeammates.sort((a, b) => b.gamesPlayedTogether.compareTo(a.gamesPlayedTogether));
+      if (updatedTeammates.length > 5) {
+        updatedTeammates = updatedTeammates.take(5).toList();
+      }
+      
+      // Обновляем пользователя
+      await _firestore.collection('users').doc(playerId).update({
+        'bestTeammates': updatedTeammates.map((ref) => ref.toMap()).toList(),
+        'updatedAt': Timestamp.now(),
+      });
+      
+    } catch (e) {
+      debugPrint('Ошибка обновления статистики партнерства: $e');
+    }
+  }
+
+  // Сохранение оценки организатора
+  Future<void> saveOrganizerEvaluation({
+    required String gameId,
+    required String organizerId,
+    required List<String> playerIds,
+    String? comment,
+  }) async {
+    try {
+      final batch = _firestore.batch();
+      
+      for (final playerId in playerIds) {
+        final evaluationId = _uuid.v4();
+        final evaluation = PlayerEvaluationModel(
+          id: evaluationId,
+          gameId: gameId,
+          organizerId: organizerId,
+          playerId: playerId,
+          points: 1, // Стандартный балл от организатора
+          comment: comment,
+          createdAt: DateTime.now(),
+        );
+        
+        // Сохраняем оценку
+        final evaluationRef = _firestore.collection('playerEvaluations').doc(evaluationId);
+        batch.set(evaluationRef, evaluation.toMap());
+        
+        // Обновляем баллы игрока
+        await _updatePlayerScore(
+          userId: playerId,
+          pointsToAdd: 1,
+          organizerPointsToAdd: 1,
+          activityMessage: 'Организатор дал +1 балл за игру',
+        );
+      }
+      
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Ошибка сохранения оценки организатора: $e');
+      rethrow;
+    }
+  }
+
+  // Универсальный метод обновления баллов игрока
+  Future<void> _updatePlayerScore({
+    required String userId,
+    int pointsToAdd = 0,
+    int organizerPointsToAdd = 0,
+    required String activityMessage,
+  }) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return;
+      
+      final user = UserModel.fromMap(userDoc.data()!);
+      
+      final updatedTotalScore = user.totalScore + pointsToAdd;
+      final updatedOrganizerPoints = user.organizerPoints + organizerPointsToAdd;
+      
+      final updatedActivityFeed = [activityMessage, ...user.activityFeed];
+      if (updatedActivityFeed.length > 20) {
+        updatedActivityFeed.removeRange(20, updatedActivityFeed.length);
+      }
+      
+      await _firestore.collection('users').doc(userId).update({
+        'totalScore': updatedTotalScore,
+        'organizerPoints': updatedOrganizerPoints,
+        'activityFeed': updatedActivityFeed,
+        'updatedAt': Timestamp.now(),
+      });
+      
+    } catch (e) {
+      debugPrint('Ошибка обновления баллов игрока: $e');
+    }
+  }
+
+  // Получение предстоящих игр пользователя
+  Future<List<GameRef>> getUpcomingGamesForUser(String userId) async {
+    try {
+      final now = DateTime.now();
+      final snapshot = await _firestore
+          .collection('rooms')
+          .where('participants', arrayContains: userId)
+          .where('status', whereIn: [
+            RoomStatus.planned.toString().split('.').last,
+            RoomStatus.active.toString().split('.').last,
+          ])
+          .get();
+      
+      final upcomingGames = <GameRef>[];
+      
+      for (final doc in snapshot.docs) {
+        final room = RoomModel.fromMap(doc.data());
+        
+        // Только будущие игры
+        if (room.startTime.isAfter(now)) {
+          // Получаем команду пользователя
+          final userTeam = await getUserTeamInRoom(userId, room.id);
+          final teammates = userTeam?.members.where((id) => id != userId).toList() ?? [];
+          
+          upcomingGames.add(GameRef(
+            id: room.id,
+            title: room.title,
+            location: room.location,
+            date: room.startTime,
+            result: 'upcoming',
+            teammates: teammates,
+          ));
+        }
+      }
+      
+      // Сортируем по дате
+      upcomingGames.sort((a, b) => a.date.compareTo(b.date));
+      
+      return upcomingGames;
+    } catch (e) {
+      debugPrint('Ошибка получения предстоящих игр: $e');
+      return [];
+    }
+  }
+
+  // Обновление статуса игрока
+  Future<void> updatePlayerStatus(String userId, PlayerStatus status) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'status': status.toString().split('.').last,
+        'updatedAt': Timestamp.now(),
+      });
+    } catch (e) {
+      debugPrint('Ошибка обновления статуса игрока: $e');
+      rethrow;
+    }
+  }
+
+  // Получение оценок для игры
+  Future<List<PlayerEvaluationModel>> getEvaluationsForGame(String gameId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('playerEvaluations')
+          .where('gameId', isEqualTo: gameId)
+          .get();
+      
+      return snapshot.docs
+          .map((doc) => PlayerEvaluationModel.fromMap(doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint('Ошибка получения оценок для игры: $e');
+      return [];
+    }
+  }
+
+  // МЕТОДЫ ДЛЯ РАБОТЫ С ДРУЗЬЯМИ
+
+  // Добавить в друзья
+  Future<void> addFriend(String userId, String friendId) async {
+    try {
+      if (userId == friendId) {
+        throw Exception('Нельзя добавить себя в друзья');
+      }
+
+      // Проверяем, не друзья ли уже
+      final isAlreadyFriend = await isFriend(userId, friendId);
+      if (isAlreadyFriend) {
+        throw Exception('Пользователь уже в списке друзей');
+      }
+
+      final batch = _firestore.batch();
+
+      // Добавляем друг друга взаимно
+      batch.update(_firestore.collection('users').doc(userId), {
+        'friends': FieldValue.arrayUnion([friendId]),
+        'updatedAt': Timestamp.now(),
+      });
+
+      batch.update(_firestore.collection('users').doc(friendId), {
+        'friends': FieldValue.arrayUnion([userId]),
+        'updatedAt': Timestamp.now(),
+      });
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Ошибка добавления в друзья: $e');
+      rethrow;
+    }
+  }
+
+  // Удалить из друзей
+  Future<void> removeFriend(String userId, String friendId) async {
+    try {
+      final batch = _firestore.batch();
+
+      // Удаляем друг друга взаимно
+      batch.update(_firestore.collection('users').doc(userId), {
+        'friends': FieldValue.arrayRemove([friendId]),
+        'updatedAt': Timestamp.now(),
+      });
+
+      batch.update(_firestore.collection('users').doc(friendId), {
+        'friends': FieldValue.arrayRemove([userId]),
+        'updatedAt': Timestamp.now(),
+      });
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Ошибка удаления из друзей: $e');
+      rethrow;
+    }
+  }
+
+  // Проверить, являются ли пользователи друзьями
+  Future<bool> isFriend(String userId, String friendId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return false;
+
+      final user = UserModel.fromMap(userDoc.data()!);
+      return user.friends.contains(friendId);
+    } catch (e) {
+      debugPrint('Ошибка проверки дружбы: $e');
+      return false;
+    }
+  }
+
+  // Получить список друзей пользователя
+  Future<List<UserModel>> getFriends(String userId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return [];
+
+      final user = UserModel.fromMap(userDoc.data()!);
+      final friends = <UserModel>[];
+
+      for (final friendId in user.friends) {
+        final friend = await getUserById(friendId);
+        if (friend != null) {
+          friends.add(friend);
+        }
+      }
+
+      return friends;
+    } catch (e) {
+      debugPrint('Ошибка получения списка друзей: $e');
+      return [];
     }
   }
 } 

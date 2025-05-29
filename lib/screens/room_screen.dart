@@ -6,6 +6,7 @@ import '../utils/constants.dart';
 import '../models/room_model.dart';
 import '../models/user_model.dart';
 import '../models/team_model.dart';
+import '../widgets/confirmation_dialog.dart';
 
 class RoomScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -86,6 +87,74 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         );
       }
     }
+  }
+
+  // Новый метод для начала игры с проверками
+  Future<void> _startGameWithConfirmation() async {
+    final roomAsync = ref.read(roomProvider(widget.roomId));
+    final room = roomAsync.value;
+    
+    if (room == null) return;
+    
+    final now = DateTime.now();
+    final isEarly = now.isBefore(room.startTime);
+    
+    // Если игра начинается раньше времени, показываем подтверждение
+    if (isEarly) {
+      final confirmed = await ConfirmationDialog.showStartEarly(context);
+      if (confirmed != true) return;
+      
+      // Проверяем конфликты локации
+      final firestoreService = ref.read(firestoreServiceProvider);
+      final hasConflict = await firestoreService.checkLocationConflict(
+        location: room.location,
+        startTime: now,
+        endTime: room.endTime,
+        excludeRoomId: room.id,
+      );
+      
+      if (hasConflict) {
+        // Получаем информацию о конфликтующей игре
+        final conflictingRoom = await firestoreService.getConflictingRoom(
+          location: room.location,
+          startTime: now,
+          endTime: room.endTime,
+          excludeRoomId: room.id,
+        );
+        
+        if (mounted) {
+          ConfirmationDialog.showLocationConflict(
+            context,
+            plannedStartTime: room.startTime,
+            conflictingRoom: conflictingRoom,
+          );
+        }
+        return; // Не начинаем игру
+      }
+    }
+    
+    // Если все проверки пройдены, начинаем игру
+    await _updateRoomStatus(RoomStatus.active);
+  }
+
+  // Новый метод для завершения игры с подтверждением
+  Future<void> _endGameWithConfirmation() async {
+    final roomAsync = ref.read(roomProvider(widget.roomId));
+    final room = roomAsync.value;
+    
+    if (room == null) return;
+    
+    final now = DateTime.now();
+    final isEarly = now.isBefore(room.endTime);
+    
+    // Если игра завершается раньше времени, показываем подтверждение
+    if (isEarly) {
+      final confirmed = await ConfirmationDialog.showEndEarly(context);
+      if (confirmed != true) return;
+    }
+    
+    // Завершаем игру
+    await _updateRoomStatus(RoomStatus.completed);
   }
 
   String _getStatusText(RoomStatus status) {
@@ -403,77 +472,371 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   Widget _buildTeamItem(TeamModel team) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSizes.smallSpace),
-      padding: AppSizes.cardPadding,
-      decoration: BoxDecoration(
+      child: Material(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(AppSizes.cardRadius),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.groups,
-            color: team.isFull ? AppColors.error : AppColors.primary,
-          ),
-          const SizedBox(width: AppSizes.mediumSpace),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: InkWell(
+          onTap: () => _showTeamPlayersDialog(team),
+          borderRadius: BorderRadius.circular(AppSizes.cardRadius),
+          child: Container(
+            padding: AppSizes.cardPadding,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppSizes.cardRadius),
+              border: Border.all(color: AppColors.divider),
+            ),
+            child: Row(
               children: [
-                Text(
-                  team.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
+                Icon(
+                  Icons.groups,
+                  color: team.isFull ? AppColors.error : AppColors.primary,
+                ),
+                const SizedBox(width: AppSizes.mediumSpace),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        team.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${team.members.length}/${team.maxMembers} игроков',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  '${team.members.length}/${team.maxMembers} игроков',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: AppSizes.smallSpace),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: team.isFull ? AppColors.error : AppColors.success,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    team.isFull ? 'Заполнена' : 'Свободна',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 4,
-            ),
-            decoration: BoxDecoration(
-              color: team.isFull ? AppColors.error : AppColors.success,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              team.isFull ? 'Заполнена' : 'Свободна',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+        ),
+      ),
+    );
+  }
+
+  void _showTeamPlayersDialog(TeamModel team) async {
+    final user = ref.read(currentUserProvider).value;
+    
+    // Проверяем, авторизован ли пользователь
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Войдите в систему для просмотра игроков'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    // Загружаем данные игроков
+    final firestoreService = ref.read(firestoreServiceProvider);
+    final players = <UserModel?>[];
+    
+    for (final playerId in team.members) {
+      try {
+        final player = await firestoreService.getUserById(playerId);
+        players.add(player);
+      } catch (e) {
+        debugPrint('Ошибка загрузки игрока $playerId: $e');
+        players.add(null);
+      }
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Команда "${team.name}"'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: players.length,
+            itemBuilder: (context, index) {
+              final player = players[index];
+              if (player == null) {
+                return const ListTile(
+                  leading: Icon(Icons.error, color: AppColors.error),
+                  title: Text('Ошибка загрузки игрока'),
+                );
+              }
+              
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: player.photoUrl != null 
+                      ? NetworkImage(player.photoUrl!) 
+                      : null,
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  child: player.photoUrl == null 
+                      ? Text(
+                          _getInitials(player.name),
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : null,
+                ),
+                title: Text(player.name),
+                subtitle: Text(
+                  '${_getRoleDisplayName(player.role)} • Рейтинг: ${player.rating}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _showPlayerProfile(player);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Закрыть'),
           ),
         ],
       ),
     );
   }
 
-  Future<List<UserModel?>> _loadParticipants(List<String> participantIds) async {
-    final firestoreService = ref.read(firestoreServiceProvider);
-    final participants = <UserModel?>[];
+  void _showPlayerProfile(UserModel player) async {
+    final currentUser = ref.read(currentUserProvider).value;
+    final canViewEmail = currentUser?.role == UserRole.organizer || currentUser?.role == UserRole.admin;
     
-    for (final participantId in participantIds) {
-      try {
-        final user = await firestoreService.getUserById(participantId);
-        participants.add(user);
-      } catch (e) {
-        debugPrint('Ошибка загрузки участника $participantId: $e');
-        participants.add(null);
+    // Загружаем предстоящие игры игрока
+    final firestoreService = ref.read(firestoreServiceProvider);
+    final upcomingGames = await firestoreService.getUpcomingGamesForUser(player.id);
+    
+    // Проверяем статус дружбы
+    bool isFriend = false;
+    bool isOwnProfile = false;
+    if (currentUser != null) {
+      if (currentUser.id == player.id) {
+        isOwnProfile = true;
+      } else {
+        isFriend = await firestoreService.isFriend(currentUser.id, player.id);
       }
     }
     
-    return participants;
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(player.name),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Аватар
+              Center(
+                child: CircleAvatar(
+                  radius: 40,
+                  backgroundImage: player.photoUrl != null 
+                      ? NetworkImage(player.photoUrl!) 
+                      : null,
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  child: player.photoUrl == null 
+                      ? Text(
+                          _getInitials(player.name),
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Основная информация
+              if (canViewEmail) _buildProfileRow('Email', player.email),
+              _buildProfileRow('Роль', _getRoleDisplayName(player.role)),
+              _buildProfileRow('Рейтинг', player.rating.toString()),
+              _buildProfileRow('Всего очков', player.totalScore.toString()),
+              _buildProfileRow('Игр сыграно', player.gamesPlayed.toString()),
+              _buildProfileRow('Процент побед', '${player.winRate.toStringAsFixed(1)}%'),
+              
+              if (player.bio.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'О себе:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(player.bio),
+              ],
+              
+              // Предстоящие игры
+              if (upcomingGames.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Предстоящие игры:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...upcomingGames.take(3).map((game) => _buildUpcomingGameItem(game)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          // Кнопка добавления в друзья (только если это не свой профиль)
+          if (!isOwnProfile && currentUser != null) ...[
+            TextButton.icon(
+              onPressed: () => _handleFriendAction(currentUser!, player, isFriend),
+              icon: Icon(
+                isFriend ? Icons.person_remove : Icons.person_add,
+                size: 18,
+              ),
+              label: Text(isFriend ? 'Удалить из друзей' : 'Добавить в друзья'),
+              style: TextButton.styleFrom(
+                foregroundColor: isFriend ? AppColors.error : AppColors.primary,
+              ),
+            ),
+          ],
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpcomingGameItem(GameRef game) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).pop(); // Закрываем текущий диалог
+          context.push('${AppRoutes.room}/${game.id}');
+        },
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.schedule,
+                color: AppColors.primary,
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      game.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(
+                      '${game.location} • ${game.date.day}.${game.date.month}.${game.date.year}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 12,
+                color: AppColors.primary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else if (name.isNotEmpty) {
+      return name[0].toUpperCase();
+    }
+    return '';
+  }
+
+  String _getRoleDisplayName(UserRole role) {
+    switch (role) {
+      case UserRole.user:
+        return 'Игрок';
+      case UserRole.organizer:
+        return 'Организатор';
+      case UserRole.admin:
+        return 'Администратор';
+    }
   }
 
   Widget _buildActionButtons(UserModel user, RoomModel room) {
@@ -561,7 +924,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                             width: double.infinity,
                             child: ElevatedButton(
                               onPressed: room.status == RoomStatus.planned 
-                                  ? () => _updateRoomStatus(RoomStatus.active)
+                                  ? () => _startGameWithConfirmation()
                                   : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.success,
@@ -582,7 +945,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                             width: double.infinity,
                             child: ElevatedButton(
                               onPressed: room.status == RoomStatus.active 
-                                  ? () => _updateRoomStatus(RoomStatus.completed)
+                                  ? () => _endGameWithConfirmation()
                                   : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
@@ -644,5 +1007,50 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                         ),
       ],
     );
+  }
+
+  Future<void> _handleFriendAction(UserModel currentUser, UserModel player, bool isFriend) async {
+    try {
+      final firestoreService = ref.read(firestoreServiceProvider);
+      
+      if (isFriend) {
+        // Удаляем из друзей
+        await firestoreService.removeFriend(currentUser.id, player.id);
+        if (mounted) {
+          Navigator.of(context).pop(); // Закрываем диалог
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${player.name} удален из друзей'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+        }
+      } else {
+        // Добавляем в друзья
+        await firestoreService.addFriend(currentUser.id, player.id);
+        if (mounted) {
+          Navigator.of(context).pop(); // Закрываем диалог
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${player.name} добавлен в друзья'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      }
+      
+      // Обновляем провайдер пользователя для обновления списка друзей
+      ref.refresh(currentUserProvider);
+      
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 } 

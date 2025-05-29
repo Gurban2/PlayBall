@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
+import '../providers/providers.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -59,8 +61,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
       
       if (!mounted) return;
       
-      // Успешная регистрация, перенаправление на главный экран
-      context.go(AppRoutes.home);
+      // Очищаем провайдеры для обновления данных нового пользователя
+      ref.invalidate(currentUserProvider);
+      ref.invalidate(activeRoomsProvider);
+      ref.invalidate(plannedRoomsProvider);
+      ref.invalidate(userRoomsProvider);
+      
+      // Показываем сообщение об успешной регистрации
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Регистрация успешна! Теперь войдите в свой аккаунт'),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      
+      // Выходим из только что созданного аккаунта и перенаправляем на вход
+      await _authService.signOut();
+      context.go('${AppRoutes.login}?email=${Uri.encodeComponent(_emailController.text.trim())}');
     } catch (e) {
       setState(() {
         _errorMessage = 'Ошибка регистрации: ${e.toString()}';
@@ -108,6 +126,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   
                   const SizedBox(height: AppSizes.extraLargeSpace),
+                  
+                  // Информационное сообщение
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.primary.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'После регистрации вы будете перенаправлены на страницу входа',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: AppSizes.mediumSpace),
                   
                   // Поле для ника
                   TextFormField(

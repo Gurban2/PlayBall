@@ -50,7 +50,6 @@ class AppStrings {
   
   // Профиль
   static const String profile = 'Профиль';
-  static const String editProfile = 'Редактировать профиль';
   static const String changePhoto = 'Изменить фото';
   static const String statistics = 'Статистика';
   static const String gamesPlayed = 'Игр сыграно';
@@ -118,6 +117,22 @@ class AppStrings {
   
   // Новые строковые константы
   static const String settings = 'Настройки';
+  
+  // Строки для UI
+  static const String welcome = 'Добро пожаловать в PlayBall';
+  static const String noData = 'Нет данных';
+  
+  // Тексты подтверждений
+  static const String confirmStartEarly = 'Вы действительно хотите начать игру раньше?';
+  static const String confirmEndEarly = 'Вы действительно хотите закончить игру раньше?';
+  static const String locationConflict = 'Зал занят другой игрой. Дождитесь своего времени';
+  
+  // Доступные локации
+  static const List<String> availableLocations = [
+    '102school',
+    '276school', 
+    '3school',
+  ];
 }
 
 // Маршруты приложения
@@ -126,8 +141,8 @@ class AppRoutes {
   static const String login = '/login';
   static const String register = '/register';
   static const String home = '/home';
+  static const String schedule = '/schedule';
   static const String profile = '/profile';
-  static const String editProfile = '/edit-profile';
   static const String room = '/room';
   static const String createRoom = '/create-room';
   static const String gameDetails = '/game-details';
@@ -137,6 +152,8 @@ class AppRoutes {
   static const String notifications = '/notifications';
   static const String adminPanel = '/admin-panel';
   static const String organizerDashboard = '/organizer-dashboard';
+  static const String stats = '/stats';
+  static const String organizerEvaluation = '/organizer-evaluation';
 }
 
 // Константы для Firestore

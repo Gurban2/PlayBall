@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/storage_service.dart';
 import '../models/user_model.dart';
 import '../models/room_model.dart';
 
@@ -13,23 +15,23 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
   return FirestoreService();
 });
 
+final storageServiceProvider = Provider<StorageService>((ref) {
+  return StorageService();
+});
+
 // Провайдер для текущего пользователя
-final currentUserProvider = StreamProvider<UserModel?>((ref) async* {
+final currentUserProvider = StreamProvider<UserModel?>((ref) {
   final authService = ref.read(authServiceProvider);
   
-  // Сначала проверяем, авторизован ли пользователь
-  final isLoggedIn = await authService.isUserLoggedIn();
-  if (!isLoggedIn) {
-    yield null;
-    return;
-  }
-  
-  // Если авторизован, получаем данные пользователя
-  final user = await authService.getCurrentUserModel();
-  yield user;
-  
-  // TODO: В будущем здесь можно добавить подписку на изменения пользователя
-  // через Firestore stream
+  // Слушаем изменения состояния аутентификации Firebase
+  return FirebaseAuth.instance.authStateChanges().asyncMap((firebaseUser) async {
+    if (firebaseUser == null) {
+      return null;
+    }
+    
+    // Если пользователь авторизован, получаем его полную модель
+    return await authService.getCurrentUserModel();
+  });
 });
 
 // Провайдер для активных комнат с real-time обновлениями
@@ -48,6 +50,12 @@ final plannedRoomsProvider = StreamProvider<List<RoomModel>>((ref) {
 final roomProvider = StreamProvider.family<RoomModel?, String>((ref, roomId) {
   final firestoreService = ref.read(firestoreServiceProvider);
   return firestoreService.getRoomStream(roomId);
+});
+
+// Провайдер для всех комнат (для поиска)
+final roomsProvider = StreamProvider<List<RoomModel>>((ref) {
+  final firestoreService = ref.read(firestoreServiceProvider);
+  return firestoreService.getAllRoomsStream();
 });
 
 // Провайдер для всех комнат пользователя

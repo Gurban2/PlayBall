@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
+import '../providers/providers.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -20,6 +22,27 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _errorMessage;
 
   final AuthService _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Проверяем, есть ли email в query параметрах
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final uri = GoRouterState.of(context).uri;
+      final email = uri.queryParameters['email'];
+      if (email != null && email.isNotEmpty) {
+        _emailController.text = email;
+        // Показываем сообщение о том, что email заполнен автоматически
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Email заполнен автоматически. Введите пароль для входа'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -43,6 +66,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       
       if (!mounted) return;
+      
+      // Очищаем провайдеры для обновления данных нового пользователя
+      ref.invalidate(currentUserProvider);
+      ref.invalidate(activeRoomsProvider);
+      ref.invalidate(plannedRoomsProvider);
+      ref.invalidate(userRoomsProvider);
       
       // Успешный вход, перенаправление на главный экран
       context.go(AppRoutes.home);
@@ -213,6 +242,44 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: const Text(AppStrings.register),
                       ),
                     ],
+                  ),
+                  
+                  const SizedBox(height: AppSizes.largeSpace),
+                  
+                  // Разделитель
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'или',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: AppSizes.largeSpace),
+                  
+                  // Кнопка для перехода на главную без входа
+                  OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => context.go(AppRoutes.home),
+                    icon: const Icon(Icons.visibility),
+                    label: const Text('Просмотреть игры без входа'),
+                    style: OutlinedButton.styleFrom(
+                      padding: AppSizes.buttonPadding,
+                      minimumSize: const Size.fromHeight(AppSizes.buttonHeight),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppSizes.buttonRadius),
+                      ),
+                      side: const BorderSide(color: AppColors.primary),
+                      foregroundColor: AppColors.primary,
+                    ),
                   ),
                 ],
               ),

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/constants.dart';
-import '../utils/validators.dart';
 import '../models/user_model.dart';
 
 // Модель команды (временная, пока не создана отдельная модель)

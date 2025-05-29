@@ -3,13 +3,15 @@ import 'package:go_router/go_router.dart';
 import '../screens/login_screen.dart';
 import '../screens/register_screen.dart';
 import '../screens/home_screen.dart';
+import '../screens/main_screen.dart';
+import '../screens/schedule_screen.dart';
 import '../screens/welcome_screen.dart';
 import '../screens/profile_screen.dart';
-import '../screens/edit_profile_screen.dart';
 import '../screens/create_room_screen.dart';
 import '../screens/room_screen.dart';
 import '../screens/team_screen.dart';
 import '../screens/team_selection_screen.dart';
+import '../screens/search_games_screen.dart';
 import '../services/auth_service.dart';
 import 'constants.dart';
 
@@ -25,7 +27,6 @@ class AppRouter {
       // Страницы, которые требуют авторизации
       final protectedRoutes = [
         AppRoutes.profile,
-        AppRoutes.editProfile,
         AppRoutes.createRoom,
       ];
       
@@ -61,25 +62,32 @@ class AppRouter {
         builder: (context, state) => const RegisterScreen(),
       ),
 
-      // Главный экран (список игр)
+      // Главный экран с навигацией
       GoRoute(
         path: AppRoutes.home,
         name: 'home',
-        builder: (context, state) => const HomeScreen(),
+        builder: (context, state) => const MainScreen(initialIndex: 0),
+      ),
+
+      // Расписание игр
+      GoRoute(
+        path: AppRoutes.schedule,
+        name: 'schedule',
+        builder: (context, state) => const MainScreen(initialIndex: 0),
+      ),
+
+      // Поиск игр
+      GoRoute(
+        path: '/search',
+        name: 'search',
+        builder: (context, state) => const MainScreen(initialIndex: 1),
       ),
 
       // Профиль пользователя
       GoRoute(
         path: AppRoutes.profile,
         name: 'profile',
-        builder: (context, state) => const ProfileScreen(),
-      ),
-
-      // Редактирование профиля
-      GoRoute(
-        path: AppRoutes.editProfile,
-        name: 'edit-profile',
-        builder: (context, state) => const EditProfileScreen(),
+        builder: (context, state) => const MainScreen(initialIndex: 2),
       ),
 
       // Создание комнаты
