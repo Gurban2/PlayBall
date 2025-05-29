@@ -8,8 +8,9 @@ enum RoomStatus {
 }
 
 enum GameMode {
-  friendly,
-  tournament,
+  normal,        // Обычный режим - как сейчас
+  team_friendly, // Дружеский матч - команда на команду (только 2 команды)
+  tournament,    // Турнир - команда на команду (от 2х команд)
 }
 
 class RoomModel {
@@ -43,7 +44,7 @@ class RoomModel {
     this.participants = const [],
     required this.maxParticipants,
     this.status = RoomStatus.planned,
-    this.gameMode = GameMode.friendly,
+    this.gameMode = GameMode.normal,
     required this.pricePerPerson,
     this.photoUrl,
     this.numberOfTeams = 2,
@@ -162,16 +163,25 @@ class RoomModel {
 
   static GameMode _gameModeFromString(String? gameMode) {
     switch (gameMode) {
-      case 'friendly':
-        return GameMode.friendly;
+      case 'normal':
+        return GameMode.normal;
+      case 'team_friendly':
+        return GameMode.team_friendly;
       case 'tournament':
         return GameMode.tournament;
+      case 'friendly':
+        return GameMode.team_friendly;
       default:
-        return GameMode.friendly;
+        return GameMode.normal;
     }
   }
 
   bool get isFull => participants.length >= maxParticipants;
   bool get hasStarted => startTime.isBefore(DateTime.now());
   bool get hasEnded => endTime.isBefore(DateTime.now());
+
+  bool get isNormalMode => gameMode == GameMode.normal;
+  bool get isTeamMode => gameMode == GameMode.team_friendly || gameMode == GameMode.tournament;
+  bool get isFriendlyMode => gameMode == GameMode.team_friendly;
+  bool get isTournamentMode => gameMode == GameMode.tournament;
 } 

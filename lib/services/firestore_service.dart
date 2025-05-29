@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/room_model.dart';
 import '../models/user_model.dart';
 import '../models/team_model.dart';
+import '../models/user_team_model.dart';
 import '../models/player_evaluation_model.dart';
 import '../utils/constants.dart';
 import 'package:uuid/uuid.dart';
@@ -1559,6 +1560,211 @@ class FirestoreService {
     } catch (e) {
       debugPrint('Ошибка получения списка друзей: $e');
       return [];
+    }
+  }
+
+  // МЕТОДЫ ДЛЯ РАБОТЫ С ПОСТОЯННЫМИ КОМАНДАМИ ПОЛЬЗОВАТЕЛЕЙ
+
+  // Создать команду пользователя
+  Future<String> createUserTeam(UserTeamModel team) async {
+    try {
+      final String teamId = _uuid.v4();
+      final teamWithId = team.copyWith();
+      
+      final teamData = teamWithId.toMap();
+      teamData['id'] = teamId;
+      
+      await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).set(teamData);
+      
+      // Обновляем информацию о команде у всех участников
+      await _updateTeamInfoForMembers(teamId, team.name, team.members, team.ownerId);
+      
+      return teamId;
+    } catch (e) {
+      debugPrint('Ошибка создания команды пользователя: $e');
+      rethrow;
+    }
+  }
+
+  // Получить команду пользователя (организатора)
+  Future<UserTeamModel?> getUserTeam(String ownerId) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirestorePaths.userTeamsCollection)
+          .where('ownerId', isEqualTo: ownerId)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return null;
+      
+      return UserTeamModel.fromMap(snapshot.docs.first.data());
+    } catch (e) {
+      debugPrint('Ошибка получения команды пользователя: $e');
+      return null;
+    }
+  }
+
+  // Обновить команду пользователя
+  Future<void> updateUserTeam(String teamId, Map<String, dynamic> updates) async {
+    try {
+      updates['updatedAt'] = Timestamp.now();
+      await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).update(updates);
+      
+      // Если обновляются участники или название, синхронизируем с профилями пользователей
+      if (updates.containsKey('members') || updates.containsKey('name')) {
+        final teamDoc = await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).get();
+        if (teamDoc.exists) {
+          final team = UserTeamModel.fromMap(teamDoc.data()!);
+          await _updateTeamInfoForMembers(teamId, team.name, team.members, team.ownerId);
+        }
+      }
+    } catch (e) {
+      debugPrint('Ошибка обновления команды пользователя: $e');
+      rethrow;
+    }
+  }
+
+  // Синхронизация информации о команде в профилях пользователей
+  Future<void> _updateTeamInfoForMembers(String teamId, String teamName, List<String> members, String ownerId) async {
+    try {
+      final batch = _firestore.batch();
+      
+      for (final memberId in members) {
+        final userRef = _firestore.collection(FirestorePaths.usersCollection).doc(memberId);
+        batch.update(userRef, {
+          'teamId': teamId,
+          'teamName': teamName,
+          'isTeamCaptain': memberId == ownerId,
+          'updatedAt': Timestamp.now(),
+        });
+      }
+      
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Ошибка синхронизации информации о команде: $e');
+    }
+  }
+
+  // Удалить информацию о команде из профилей пользователей
+  Future<void> _removeTeamInfoFromMembers(List<String> members) async {
+    try {
+      final batch = _firestore.batch();
+      
+      for (final memberId in members) {
+        final userRef = _firestore.collection(FirestorePaths.usersCollection).doc(memberId);
+        batch.update(userRef, {
+          'teamId': null,
+          'teamName': null,
+          'isTeamCaptain': false,
+          'updatedAt': Timestamp.now(),
+        });
+      }
+      
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Ошибка удаления информации о команде: $e');
+    }
+  }
+
+  // Получить пользователей по списку ID
+  Future<List<UserModel>> getUsersByIds(List<String> userIds) async {
+    try {
+      if (userIds.isEmpty) return [];
+      
+      final users = <UserModel>[];
+      
+      // Firestore имеет лимит на количество элементов в whereIn (10)
+      // Поэтому разбиваем на части
+      for (int i = 0; i < userIds.length; i += 10) {
+        final batch = userIds.skip(i).take(10).toList();
+        
+        final snapshot = await _firestore
+            .collection(FirestorePaths.usersCollection)
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+        
+        for (final doc in snapshot.docs) {
+          users.add(UserModel.fromMap(doc.data()));
+        }
+      }
+      
+      return users;
+    } catch (e) {
+      debugPrint('Ошибка получения пользователей по ID: $e');
+      return [];
+    }
+  }
+
+  // Получить друзей пользователя (альтернативный метод)
+  Future<List<UserModel>> getUserFriends(String userId) async {
+    try {
+      final userDoc = await _firestore.collection(FirestorePaths.usersCollection).doc(userId).get();
+      if (!userDoc.exists) return [];
+
+      final user = UserModel.fromMap(userDoc.data()!);
+      return await getUsersByIds(user.friends);
+    } catch (e) {
+      debugPrint('Ошибка получения друзей пользователя: $e');
+      return [];
+    }
+  }
+
+  // Удалить команду пользователя
+  Future<void> deleteUserTeam(String teamId) async {
+    try {
+      // Сначала получаем информацию о команде
+      final teamDoc = await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).get();
+      if (teamDoc.exists) {
+        final team = UserTeamModel.fromMap(teamDoc.data()!);
+        // Удаляем информацию о команде из профилей участников
+        await _removeTeamInfoFromMembers(team.members);
+      }
+      
+      // Удаляем саму команду
+      await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).delete();
+    } catch (e) {
+      debugPrint('Ошибка удаления команды пользователя: $e');
+      rethrow;
+    }
+  }
+
+  // Получить информацию о команде пользователя
+  Future<Map<String, String?>> getUserTeamInfo(String userId) async {
+    try {
+      print('🔍 getUserTeamInfo: Ищем команду для пользователя $userId');
+      
+      // Сначала пробуем найти команду, где пользователь является владельцем
+      final ownerSnapshot = await _firestore
+          .collection(FirestorePaths.userTeamsCollection)
+          .where('ownerId', isEqualTo: userId)
+          .limit(1)
+          .get();
+      
+      if (ownerSnapshot.docs.isNotEmpty) {
+        final team = UserTeamModel.fromMap(ownerSnapshot.docs.first.data());
+        print('✅ Найдена команда владельца: ${team.name} (ID: ${team.id})');
+        return {'name': team.name, 'id': team.id};
+      }
+      
+      // Если не владелец, ищем команду, где пользователь является участником
+      final memberSnapshot = await _firestore
+          .collection(FirestorePaths.userTeamsCollection)
+          .where('members', arrayContains: userId)
+          .limit(1)
+          .get();
+      
+      if (memberSnapshot.docs.isNotEmpty) {
+        final team = UserTeamModel.fromMap(memberSnapshot.docs.first.data());
+        print('✅ Найдена команда участника: ${team.name} (ID: ${team.id})');
+        return {'name': team.name, 'id': team.id};
+      }
+      
+      print('❌ Команда не найдена для пользователя $userId');
+      return {'name': null, 'id': null};
+    } catch (e) {
+      print('❌ Ошибка получения информации о команде пользователя: $e');
+      debugPrint('Ошибка получения информации о команде пользователя: $e');
+      return {'name': null, 'id': null};
     }
   }
 } 

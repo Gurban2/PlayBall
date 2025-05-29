@@ -50,13 +50,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   void _navigateToRoomDetails(String roomId) {
-    // Проверяем, авторизован ли пользователь
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) {
-      // Если не авторизован, показываем диалог с предложением войти
-      _showLoginDialog();
-    } else {
-      context.push('${AppRoutes.room}/$roomId');
+    context.push('${AppRoutes.room}/$roomId');
+  }
+
+  String _getGameModeDisplayName(GameMode gameMode) {
+    switch (gameMode) {
+      case GameMode.normal:
+        return AppStrings.normalMode;
+      case GameMode.team_friendly:
+        return AppStrings.teamFriendlyMode;
+      case GameMode.tournament:
+        return AppStrings.tournamentMode;
     }
   }
 
@@ -256,6 +260,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                       const SizedBox(width: 4),
                       Text(
                         '${room.participants.length}/${room.maxParticipants}',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.sports_esports,
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _getGameModeDisplayName(room.gameMode),
                         style: const TextStyle(color: AppColors.textSecondary),
                       ),
                     ],

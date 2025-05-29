@@ -122,6 +122,11 @@ class UserModel {
   final List<PlayerRef> bestTeammates; // Лучшие партнеры (топ-5)
   final List<GameRef> recentGames; // Последние 5 игр
   final List<String> friends; // Список ID друзей
+  
+  // ПОЛЯ ДЛЯ КОМАНДЫ
+  final String? teamId; // ID постоянной команды пользователя
+  final String? teamName; // Название команды
+  final bool isTeamCaptain; // Является ли капитаном команды
 
   const UserModel({
     required this.id,
@@ -152,6 +157,10 @@ class UserModel {
     this.bestTeammates = const [],
     this.recentGames = const [],
     this.friends = const [],
+    // Поля команды
+    this.teamId,
+    this.teamName,
+    this.isTeamCaptain = false,
   });
 
   // Вычисляемые свойства
@@ -207,6 +216,9 @@ class UserModel {
     List<PlayerRef>? bestTeammates,
     List<GameRef>? recentGames,
     List<String>? friends,
+    String? teamId,
+    String? teamName,
+    bool? isTeamCaptain,
   }) {
     return UserModel(
       id: id,
@@ -236,6 +248,9 @@ class UserModel {
       bestTeammates: bestTeammates ?? this.bestTeammates,
       recentGames: recentGames ?? this.recentGames,
       friends: friends ?? this.friends,
+      teamId: teamId ?? this.teamId,
+      teamName: teamName ?? this.teamName,
+      isTeamCaptain: isTeamCaptain ?? this.isTeamCaptain,
     );
   }
 
@@ -269,6 +284,10 @@ class UserModel {
       'bestTeammates': bestTeammates.map((ref) => ref.toMap()).toList(),
       'recentGames': recentGames.map((game) => game.toMap()).toList(),
       'friends': friends,
+      // Поля команды
+      'teamId': teamId,
+      'teamName': teamName,
+      'isTeamCaptain': isTeamCaptain,
     };
   }
 
@@ -314,6 +333,10 @@ class UserModel {
           .map((item) => GameRef.fromMap(item as Map<String, dynamic>))
           .toList(),
       friends: List<String>.from(map['friends'] ?? []),
+      // Поля команды
+      teamId: map['teamId'],
+      teamName: map['teamName'],
+      isTeamCaptain: map['isTeamCaptain'] ?? false,
     );
   }
 

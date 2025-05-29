@@ -357,7 +357,7 @@ class _OrganizerEvaluationScreenState extends ConsumerState<OrganizerEvaluationS
 
   Widget _buildPlayerCard(UserModel player) {
     final isSelected = _selectedPlayers.contains(player.id);
-    final canSelect = _selectedPlayers.length < 3 || isSelected;
+    final canSelect = !_isLoading;
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSizes.smallSpace),
@@ -399,14 +399,20 @@ class _OrganizerEvaluationScreenState extends ConsumerState<OrganizerEvaluationS
 
               // Аватар
               CircleAvatar(
-                backgroundColor: AppColors.primary,
-                child: Text(
-                  player.name.isNotEmpty ? player.name[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                radius: 20,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                backgroundImage: player.photoUrl != null 
+                    ? NetworkImage(player.photoUrl!) 
+                    : null,
+                child: player.photoUrl == null
+                    ? Text(
+                        player.name.isNotEmpty ? player.name[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
               ),
 
               const SizedBox(width: AppSizes.mediumSpace),
@@ -419,40 +425,62 @@ class _OrganizerEvaluationScreenState extends ConsumerState<OrganizerEvaluationS
                     Text(
                       player.name,
                       style: const TextStyle(
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     Text(
-                      '${player.experienceLevel} • ${player.gamesPlayed} игр • ${player.winRate.toStringAsFixed(1)}% побед',
+                      'Рейтинг: ${player.rating.toStringAsFixed(1)} • ${player.gamesPlayed} игр',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    // Информация о команде
+                    if (player.teamName != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.groups,
+                            size: 12,
+                            color: AppColors.secondary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            player.teamName!,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.secondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (player.isTeamCaptain) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.warning,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'К',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                   ],
                 ),
-              ),
-
-              // Индикатор статистики
-              Column(
-                children: [
-                  Text(
-                    player.totalScore.toString(),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const Text(
-                    'баллов',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
               ),
             ],
           ),

@@ -92,6 +92,22 @@ class AppStrings {
   static const String noTeams = 'Нет команд';
   static const String selectTeam = 'Выбрать команду';
   
+  // Режимы игры
+  static const String normalMode = 'Обычный';
+  static const String teamFriendlyMode = 'Команды';
+  static const String tournamentMode = 'Турнир';
+  static const String gameMode = 'Режим игры';
+  
+  // Постоянные команды пользователей
+  static const String myTeam = 'Моя команда';
+  static const String createMyTeam = 'Создать команду';
+  static const String teamName = 'Название команды';
+  static const String addFriend = 'Добавить друга';
+  static const String removeMember = 'Исключить игрока';
+  static const String confirmRemoveMember = 'Вы действительно хотите исключить этого игрока из команды?';
+  static const String teamAvatar = 'Аватар команды';
+  static const String selectTeamAvatar = 'Выбрать аватар команды';
+  
   // Результаты и статистика
   static const String results = 'Результаты';
   static const String winner = 'Победитель';
@@ -154,6 +170,11 @@ class AppRoutes {
   static const String organizerDashboard = '/organizer-dashboard';
   static const String stats = '/stats';
   static const String organizerEvaluation = '/organizer-evaluation';
+  
+  // Новые маршруты для команд
+  static const String myTeam = '/my-team';
+  static const String createMyTeam = '/create-my-team';
+  static const String editMyTeam = '/edit-my-team';
 }
 
 // Константы для Firestore
@@ -161,6 +182,7 @@ class FirestorePaths {
   static const String usersCollection = 'users';
   static const String roomsCollection = 'rooms';
   static const String teamsCollection = 'teams';
+  static const String userTeamsCollection = 'user_teams';
   static const String notificationsCollection = 'notifications';
 }
 

@@ -1,52 +1,42 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class TeamModel {
+class UserTeamModel {
   final String id;
   final String name;
-  final String roomId;
-  final List<String> members;
-  final int maxMembers;
+  final String ownerId; // ID организатора команды
+  final List<String> members; // Включая организатора
+  final int maxMembers; // Максимум 6 человек
+  final String? photoUrl; // Аватар команды
   final DateTime createdAt;
   final DateTime? updatedAt;
-  
-  // Новые поля для постоянных команд
-  final String? ownerId; // ID владельца команды (организатора)
-  final String? photoUrl; // Аватар команды
-  final bool isGameTeam; // true - команда для конкретной игры, false - постоянная команда пользователя
 
-  TeamModel({
+  UserTeamModel({
     required this.id,
     required this.name,
-    required this.roomId,
+    required this.ownerId,
     this.members = const [],
-    this.maxMembers = 6, // По умолчанию 6 игроков в команде
+    this.maxMembers = 6,
+    this.photoUrl,
     required this.createdAt,
     this.updatedAt,
-    this.ownerId,
-    this.photoUrl,
-    this.isGameTeam = true, // По умолчанию команда для игры
   });
 
-  TeamModel copyWith({
+  UserTeamModel copyWith({
     String? name,
     List<String>? members,
     int? maxMembers,
-    DateTime? updatedAt,
-    String? ownerId,
     String? photoUrl,
-    bool? isGameTeam,
+    DateTime? updatedAt,
   }) {
-    return TeamModel(
+    return UserTeamModel(
       id: id,
       name: name ?? this.name,
-      roomId: roomId,
+      ownerId: ownerId,
       members: members ?? this.members,
       maxMembers: maxMembers ?? this.maxMembers,
+      photoUrl: photoUrl ?? this.photoUrl,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      ownerId: ownerId ?? this.ownerId,
-      photoUrl: photoUrl ?? this.photoUrl,
-      isGameTeam: isGameTeam ?? this.isGameTeam,
     );
   }
 
@@ -54,37 +44,33 @@ class TeamModel {
     return {
       'id': id,
       'name': name,
-      'roomId': roomId,
+      'ownerId': ownerId,
       'members': members,
       'maxMembers': maxMembers,
+      'photoUrl': photoUrl,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
-      'ownerId': ownerId,
-      'photoUrl': photoUrl,
-      'isGameTeam': isGameTeam,
     };
   }
 
-  factory TeamModel.fromMap(Map<String, dynamic> map) {
-    return TeamModel(
+  factory UserTeamModel.fromMap(Map<String, dynamic> map) {
+    return UserTeamModel(
       id: map['id'] ?? '',
       name: map['name'] ?? '',
-      roomId: map['roomId'] ?? '',
+      ownerId: map['ownerId'] ?? '',
       members: List<String>.from(map['members'] ?? []),
       maxMembers: map['maxMembers'] ?? 6,
+      photoUrl: map['photoUrl'],
       createdAt: map['createdAt'] is Timestamp 
           ? (map['createdAt'] as Timestamp).toDate() 
           : DateTime.now(),
       updatedAt: map['updatedAt'] != null && map['updatedAt'] is Timestamp
           ? (map['updatedAt'] as Timestamp).toDate() 
           : null,
-      ownerId: map['ownerId'],
-      photoUrl: map['photoUrl'],
-      isGameTeam: map['isGameTeam'] ?? true,
     );
   }
 
   bool get isFull => members.length >= maxMembers;
   int get availableSlots => maxMembers - members.length;
-  bool get isUserTeam => !isGameTeam; // Постоянная команда пользователя
+  bool get hasOwner => members.contains(ownerId);
 } 

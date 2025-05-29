@@ -7,6 +7,7 @@ import '../models/room_model.dart';
 import '../models/user_model.dart';
 import '../models/team_model.dart';
 import '../widgets/confirmation_dialog.dart';
+import '../widgets/player_card.dart';
 
 class RoomScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -585,34 +586,17 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             itemBuilder: (context, index) {
               final player = players[index];
               if (player == null) {
-                return const ListTile(
-                  leading: Icon(Icons.error, color: AppColors.error),
-                  title: Text('Ошибка загрузки игрока'),
+                return const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.error, color: AppColors.error),
+                    title: Text('Ошибка загрузки игрока'),
+                  ),
                 );
               }
               
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundImage: player.photoUrl != null 
-                      ? NetworkImage(player.photoUrl!) 
-                      : null,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                  child: player.photoUrl == null 
-                      ? Text(
-                          _getInitials(player.name),
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                      : null,
-                ),
-                title: Text(player.name),
-                subtitle: Text(
-                  '${_getRoleDisplayName(player.role)} • Рейтинг: ${player.rating}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              return PlayerCard(
+                player: player,
+                compact: true,
                 onTap: () {
                   Navigator.of(context).pop();
                   _showPlayerProfile(player);

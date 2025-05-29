@@ -220,7 +220,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                         ...GameMode.values.map((mode) => DropdownMenuItem(
                               value: mode,
                               child: Text(
-                                mode == GameMode.friendly ? 'Дружественный' : 'Турнир',
+                                _getGameModeDisplayName(mode),
                                 style: const TextStyle(fontSize: 14),
                               ),
                             )),
@@ -519,7 +519,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                       Expanded(
                         child: _buildInfoChip(
                           icon: Icons.sports,
-                          label: room.gameMode == GameMode.friendly ? 'Дружественный' : 'Турнир',
+                          label: _getGameModeDisplayName(room.gameMode),
                           color: AppColors.success,
                         ),
                       ),
@@ -609,5 +609,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}.${dateTime.month} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _getGameModeDisplayName(GameMode mode) {
+    switch (mode) {
+      case GameMode.normal:
+        return 'Обычный';
+      case GameMode.team_friendly:
+        return 'Команды';
+      case GameMode.tournament:
+        return 'Турнир';
+    }
   }
 } 

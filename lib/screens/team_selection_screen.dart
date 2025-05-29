@@ -6,6 +6,7 @@ import '../models/user_model.dart';
 import '../models/room_model.dart';
 import '../providers/providers.dart';
 import '../utils/constants.dart';
+import '../widgets/player_card.dart';
 
 class TeamSelectionScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -71,6 +72,166 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
     }
     
     return members;
+  }
+
+  void _showPlayerProfile(UserModel player) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(player.name),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: CircleAvatar(
+                radius: 40,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                backgroundImage: player.photoUrl != null 
+                    ? NetworkImage(player.photoUrl!) 
+                    : null,
+                child: player.photoUrl == null 
+                    ? Text(
+                        _getInitials(player.name),
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildProfileRow('Рейтинг', player.rating.toStringAsFixed(1)),
+            _buildProfileRow('Игр сыграно', player.gamesPlayed.toString()),
+            _buildProfileRow('Процент побед', '${player.winRate.toStringAsFixed(1)}%'),
+            
+            // Информация о команде
+            if (player.teamName != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.secondary.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.groups,
+                      color: AppColors.secondary,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                player.teamName!,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.secondary,
+                                ),
+                              ),
+                              if (player.isTeamCaptain) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warning,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'Капитан',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const Text(
+                            'Постоянная команда',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            if (player.bio.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'О себе:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(player.bio),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else if (name.isNotEmpty) {
+      return name[0].toUpperCase();
+    }
+    return '?';
   }
 
   Widget _buildTeamCard(TeamModel team, UserModel user, RoomModel room) {
@@ -149,24 +310,10 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
                         );
                       }
                       
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          backgroundColor: AppColors.primary,
-                          backgroundImage: member.photoUrl != null 
-                              ? NetworkImage(member.photoUrl!) 
-                              : null,
-                          child: member.photoUrl == null
-                              ? Text(
-                                  member.name.isNotEmpty 
-                                      ? member.name.substring(0, 1).toUpperCase()
-                                      : '?',
-                                  style: const TextStyle(color: Colors.white),
-                                )
-                              : null,
-                        ),
-                        title: Text(member.name),
-                        subtitle: Text('Рейтинг: ${member.rating}'),
+                      return PlayerCard(
+                        player: member,
+                        compact: true,
+                        onTap: () => _showPlayerProfile(member),
                       );
                     }).toList(),
                   );

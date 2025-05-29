@@ -28,12 +28,14 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
 
   DateTime _startTime = DateTime.now().add(const Duration(hours: 1));
   DateTime _endTime = DateTime.now().add(const Duration(hours: 3));
-  GameMode _selectedGameMode = GameMode.friendly;
+  GameMode _selectedGameMode = GameMode.normal;
   bool _isLoading = false;
   Uint8List? _selectedImageBytes;
   final ImagePicker _imagePicker = ImagePicker();
   int _activeRoomsCount = 0;
   String? _selectedLocation;
+  String? _userTeamName; // Название команды пользователя
+  String? _userTeamId; // ID команды пользователя
 
   @override
   void initState() {
@@ -43,6 +45,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     _team1NameController.text = 'Команда 1';
     _team2NameController.text = 'Команда 2';
     _loadActiveRoomsCount();
+    _loadUserTeamInfo(); // Загружаем информацию о команде пользователя
   }
 
   Future<void> _loadActiveRoomsCount() async {
@@ -57,6 +60,57 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           _activeRoomsCount = count;
         });
       }
+    }
+  }
+
+  Future<void> _loadUserTeamInfo() async {
+    final userAsync = ref.read(currentUserProvider);
+    final user = userAsync.value;
+    
+    print('🔍 _loadUserTeamInfo: Начинаем загрузку данных команды');
+    print('👤 Пользователь: ${user?.name} (ID: ${user?.id})');
+    
+    if (user != null) {
+      final firestoreService = ref.read(firestoreServiceProvider);
+      try {
+        final teamInfo = await firestoreService.getUserTeamInfo(user.id);
+        print('📊 Данные команды получены: $teamInfo');
+        
+        if (mounted) {
+          setState(() {
+            _userTeamName = teamInfo['name'];
+            _userTeamId = teamInfo['id'];
+          });
+          print('✅ Состояние обновлено: teamName = $_userTeamName, teamId = $_userTeamId');
+        }
+      } catch (e) {
+        print('❌ Ошибка загрузки данных команды: $e');
+      }
+    } else {
+      print('❌ Пользователь не найден');
+    }
+  }
+
+  void _updateRoomTitleBasedOnMode(GameMode mode) {
+    String currentTitle = _titleController.text;
+    
+    // Убираем старые суффиксы, если они есть
+    currentTitle = currentTitle
+        .replaceAll(' - Команды', '')
+        .replaceAll(' - Турнир', '')
+        .trim();
+    
+    // Добавляем новый суффикс в зависимости от режима
+    switch (mode) {
+      case GameMode.normal:
+        _titleController.text = currentTitle;
+        break;
+      case GameMode.team_friendly:
+        _titleController.text = currentTitle.isEmpty ? '' : '$currentTitle - Команды';
+        break;
+      case GameMode.tournament:
+        _titleController.text = currentTitle.isEmpty ? '' : '$currentTitle - Турнир';
+        break;
     }
   }
 
@@ -165,6 +219,20 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       return;
     }
 
+    // Проверяем наличие команды у организатора для командного режима
+    if (_selectedGameMode == GameMode.team_friendly) {
+      if (_userTeamName == null || _userTeamName!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Для создания командной игры у вас должна быть своя команда. Создайте команду в разделе "Моя команда" в профиле.'),
+            backgroundColor: AppColors.error,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        return;
+      }
+    }
+
     if (_endTime.isBefore(_startTime)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -195,10 +263,20 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         numberOfTeams: 2, // Фиксированное количество команд
         gameMode: _selectedGameMode,
         photoUrl: null, // Пока без фото
-        teamNames: [
-          _team1NameController.text.trim(),
-          _team2NameController.text.trim(),
-        ],
+        teamNames: _selectedGameMode == GameMode.normal 
+            ? [
+                _team1NameController.text.trim(),
+                _team2NameController.text.trim(),
+              ]
+            : _selectedGameMode == GameMode.team_friendly
+                ? [
+                    _userTeamName!,
+                    'Команда 2',
+                  ]
+                : [ // GameMode.tournament
+                    'Участник 1',
+                    'Участник 2',
+                  ],
       );
       
       // Если есть изображение, загружаем его в Storage и обновляем комнату
@@ -339,7 +417,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                       size: 20,
                     ),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Попробуйте выбрать другое время или локацию',
                         style: TextStyle(
@@ -392,6 +470,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Отладочная информация
+    print('🏗️ Build: _userTeamName = $_userTeamName, _userTeamId = $_userTeamId');
+    print('🎮 Build: _selectedGameMode = $_selectedGameMode');
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -445,6 +527,72 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                               validator: Validators.validateTitle,
                               maxLength: 30,
                             ),
+                            
+                            // Информационное сообщение для командных режимов
+                            if ((_selectedGameMode == GameMode.team_friendly || _selectedGameMode == GameMode.tournament)) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppColors.primary.withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      color: AppColors.primary,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _selectedGameMode == GameMode.team_friendly 
+                                                ? (_userTeamName != null && _userTeamName!.isNotEmpty)
+                                                    ? 'Командный режим: к названию добавится "- Команды". Первая команда: "$_userTeamName", вторая: "Команда 2"'
+                                                    : 'Командный режим: для создания нужна своя команда! Создайте команду в профиле.'
+                                                : 'Турнирный режим: к названию добавится "- Турнир". Команды: "Участник 1", "Участник 2"',
+                                            style: TextStyle(
+                                              color: (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
+                                                  ? AppColors.error
+                                                  : AppColors.primary,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          if (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty)) ...[
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                TextButton.icon(
+                                                  onPressed: () async {
+                                                    await _loadUserTeamInfo();
+                                                    setState(() {});
+                                                  },
+                                                  icon: const Icon(Icons.refresh, size: 16),
+                                                  label: const Text('Обновить'),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor: AppColors.primary,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    minimumSize: Size.zero,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            
                             const SizedBox(height: 12),
 
                             // Описание
@@ -480,36 +628,13 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  Row(
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
                                     children: [
-                                      Expanded(
-                                        child: RadioListTile<GameMode>(
-                                          title: const Text('Дружественный', style: TextStyle(fontSize: 13)),
-                                          value: GameMode.friendly,
-                                          groupValue: _selectedGameMode,
-                                          onChanged: (GameMode? value) {
-                                            setState(() {
-                                              _selectedGameMode = value!;
-                                            });
-                                          },
-                                          dense: true,
-                                          contentPadding: EdgeInsets.zero,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: RadioListTile<GameMode>(
-                                          title: const Text('Турнир', style: TextStyle(fontSize: 13)),
-                                          value: GameMode.tournament,
-                                          groupValue: _selectedGameMode,
-                                          onChanged: (GameMode? value) {
-                                            setState(() {
-                                              _selectedGameMode = value!;
-                                            });
-                                          },
-                                          dense: true,
-                                          contentPadding: EdgeInsets.zero,
-                                        ),
-                                      ),
+                                      _buildGameModeChip(GameMode.normal, 'Обычный'),
+                                      _buildGameModeChip(GameMode.team_friendly, 'Команды'),
+                                      _buildGameModeChip(GameMode.tournament, 'Турнир'),
                                     ],
                                   ),
                                 ],
@@ -565,81 +690,230 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
 
                     const SizedBox(height: 16),
 
-                    // Карточка команд
-                    Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.groups, color: AppColors.primary),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Названия команд',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                    // Карточка команд - только для обычного режима
+                    if (_selectedGameMode == GameMode.normal) ...[
+                      Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.groups, color: AppColors.primary),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Названия команд',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Название первой команды
+                              TextFormField(
+                                controller: _team1NameController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Название первой команды',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  prefixIcon: Icon(Icons.group_outlined),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Название первой команды
-                            TextFormField(
-                              controller: _team1NameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Название первой команды',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                                prefixIcon: Icon(Icons.group_outlined),
+                                validator: (value) {
+                                  if (_selectedGameMode == GameMode.normal) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Введите название первой команды';
+                                    }
+                                    if (value.trim().length > 20) {
+                                      return 'Название не должно превышать 20 символов';
+                                    }
+                                  }
+                                  return null;
+                                },
+                                maxLength: 20,
                               ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Введите название первой команды';
-                                }
-                                if (value.trim().length > 20) {
-                                  return 'Название не должно превышать 20 символов';
-                                }
-                                return null;
-                              },
-                              maxLength: 20,
-                            ),
-                            const SizedBox(height: 12),
+                              const SizedBox(height: 12),
 
-                            // Название второй команды
-                            TextFormField(
-                              controller: _team2NameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Название второй команды',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                                prefixIcon: Icon(Icons.group),
+                              // Название второй команды
+                              TextFormField(
+                                controller: _team2NameController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Название второй команды',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  prefixIcon: Icon(Icons.group),
+                                ),
+                                validator: (value) {
+                                  if (_selectedGameMode == GameMode.normal) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Введите название второй команды';
+                                    }
+                                    if (value.trim().length > 20) {
+                                      return 'Название не должно превышать 20 символов';
+                                    }
+                                    if (value.trim() == _team1NameController.text.trim()) {
+                                      return 'Названия команд должны быть разными';
+                                    }
+                                  }
+                                  return null;
+                                },
+                                maxLength: 20,
                               ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Введите название второй команды';
-                                }
-                                if (value.trim().length > 20) {
-                                  return 'Название не должно превышать 20 символов';
-                                }
-                                if (value.trim() == _team1NameController.text.trim()) {
-                                  return 'Названия команд должны быть разными';
-                                }
-                                return null;
-                              },
-                              maxLength: 20,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Информационная карточка для командных и турнирных режимов
+                    if (_selectedGameMode == GameMode.team_friendly || _selectedGameMode == GameMode.tournament) ...[
+                      Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.info, color: AppColors.secondary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _selectedGameMode == GameMode.team_friendly 
+                                          ? 'Команды (автоматически)'
+                                          : 'Участники турнира (автоматически)',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  if (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
+                                    IconButton(
+                                      onPressed: () async {
+                                        await _loadUserTeamInfo();
+                                        setState(() {});
+                                      },
+                                      icon: const Icon(Icons.refresh),
+                                      color: AppColors.primary,
+                                      tooltip: 'Обновить данные команды',
+                                      iconSize: 20,
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Первая команда/участник
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      _selectedGameMode == GameMode.team_friendly 
+                                          ? ((_userTeamName != null && _userTeamName!.isNotEmpty) 
+                                              ? Icons.group_outlined 
+                                              : Icons.warning_outlined)
+                                          : Icons.person_outline,
+                                      color: (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
+                                          ? AppColors.error
+                                          : AppColors.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _selectedGameMode == GameMode.team_friendly 
+                                            ? (_userTeamName ?? 'Нет команды')
+                                            : 'Участник 1',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                          color: (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
+                                              ? AppColors.error
+                                              : AppColors.text,
+                                        ),
+                                      ),
+                                    ),
+                                    if (_selectedGameMode == GameMode.team_friendly)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: (_userTeamName != null && _userTeamName!.isNotEmpty)
+                                              ? AppColors.primary
+                                              : AppColors.error,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          (_userTeamName != null && _userTeamName!.isNotEmpty)
+                                              ? 'Ваша команда'
+                                              : 'Нет команды',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Вторая команда/участник
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.secondary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      _selectedGameMode == GameMode.team_friendly 
+                                          ? Icons.group 
+                                          : Icons.person,
+                                      color: AppColors.secondary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _selectedGameMode == GameMode.team_friendly 
+                                            ? 'Команда 2'
+                                            : 'Участник 2',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                    ],
 
                     const SizedBox(height: 16),
 
@@ -775,6 +1049,29 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildGameModeChip(GameMode mode, String label) {
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: _selectedGameMode == mode ? Colors.white : Colors.black87,
+        ),
+      ),
+      selected: _selectedGameMode == mode,
+      selectedColor: AppColors.primary,
+      backgroundColor: Colors.grey.shade200,
+      onSelected: (bool selected) {
+        if (selected) {
+          setState(() {
+            _selectedGameMode = mode;
+            _updateRoomTitleBasedOnMode(mode);
+          });
+        }
+      },
     );
   }
 } 

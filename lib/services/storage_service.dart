@@ -68,6 +68,34 @@ class StorageService {
     }
   }
 
+  /// Загружает аватар команды
+  Future<String> uploadTeamAvatar(String teamId, Uint8List imageBytes) async {
+    try {
+      final fileName = 'team_avatar_${_uuid.v4()}.jpg';
+      final path = 'teams/$teamId/avatar/$fileName';
+      
+      final ref = _storage.ref().child(path);
+      
+      final uploadTask = ref.putData(
+        imageBytes,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'teamId': teamId,
+            'uploadedAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
+      
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      
+      return downloadUrl;
+    } catch (e) {
+      throw Exception('Ошибка загрузки аватара команды: $e');
+    }
+  }
+
   /// Удаляет файл по URL
   Future<void> deleteFileByUrl(String url) async {
     try {

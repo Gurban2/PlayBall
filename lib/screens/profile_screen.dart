@@ -5,6 +5,7 @@ import '../providers/providers.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'my_team_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -13,21 +14,26 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> 
+    with SingleTickerProviderStateMixin {
   final TextEditingController _bioController = TextEditingController();
   bool _isEditingBio = false;
   List<GameRef> _upcomingGames = [];
   bool _isLoadingGames = false;
+  
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadUpcomingGames();
   }
 
   @override
   void dispose() {
     _bioController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -62,12 +68,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Профиль'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => _logout(context, ref),
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.person, size: 20),
+              text: 'Профиль',
+            ),
+            Tab(
+              icon: Icon(Icons.groups, size: 20),
+              text: 'Моя команда',
+            ),
+          ],
+        ),
       ),
       body: userAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -88,476 +112,313 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         data: (user) => user == null
             ? const Center(child: Text('Пользователь не найден'))
-            : RefreshIndicator(
-                onRefresh: () async => ref.refresh(currentUserProvider),
-                child: SingleChildScrollView(
-                  padding: AppSizes.screenPadding,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    children: [
-                      // Основная карточка профиля
-                      Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            children: [
-                              // Аватар и базовая информация
-                              Row(
-                                children: [
-                      CircleAvatar(
-                                    radius: 40,
-                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                        backgroundImage: user.photoUrl != null
-                            ? NetworkImage(user.photoUrl!)
-                            : null,
-                        child: user.photoUrl == null
-                            ? Text(
-                                _getInitials(user.name),
-                                style: const TextStyle(
-                                              fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primary,
-                                ),
-                              )
-                            : null,
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  // Вкладка профиля
+                  _buildProfileTab(user),
+                  // Вкладка команды
+                  const MyTeamScreen(),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildProfileTab(UserModel user) {
+    return RefreshIndicator(
+      onRefresh: () async => ref.refresh(currentUserProvider),
+      child: SingleChildScrollView(
+        padding: AppSizes.screenPadding,
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            // Основная карточка профиля
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // Аватар и базовая информация
+                    Row(
+                      children: [
+            CircleAvatar(
+                          radius: 40,
+              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+              backgroundImage: user.photoUrl != null
+                  ? NetworkImage(user.photoUrl!)
+                  : null,
+              child: user.photoUrl == null
+                  ? Text(
+                      _getInitials(user.name),
+                      style: const TextStyle(
+                                    fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
                       ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                      Text(
-                        user.name,
-                        style: const TextStyle(
-                                            fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                                          user.email.length > 20 
-                                              ? '${user.email.substring(0, 20)}...' 
-                                              : user.email,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              Icons.circle,
-                                              size: 12,
-                                              color: _getStatusColor(user.status),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              user.statusDisplayName,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: _getStatusColor(user.status),
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              
-                              const SizedBox(height: 16),
-                              
-                              // Описание игрока
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.background,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: _isEditingBio
-                                          ? TextField(
-                                              controller: _bioController,
-                                              maxLength: 64,
-                                              decoration: const InputDecoration(
-                                                hintText: 'Расскажите о себе...',
-                                                border: InputBorder.none,
-                                                isDense: true,
-                                              ),
-                                              style: const TextStyle(fontSize: 14),
-                                            )
-                                          : Text(
-                                              user.bio.isEmpty ? 'Расскажите о себе...' : user.bio,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: user.bio.isEmpty 
-                                                    ? AppColors.textSecondary 
-                                                    : AppColors.text,
-                                              ),
-                                            ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(
-                                        _isEditingBio ? Icons.check : Icons.edit,
-                                        size: 16,
-                                      ),
-                                      onPressed: () => _toggleBioEdit(user),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              
-                              const SizedBox(height: 16),
-                              
-                              // Основная статистика в компактном виде
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                  _buildCompactStat(
-                                    user.gamesPlayed.toString(),
-                                    'Игр',
-                                    Icons.sports_volleyball,
-                                  ),
-                                  _buildCompactStat(
-                                    user.wins.toString(),
-                                    'Побед',
-                                    Icons.emoji_events,
-                                  ),
-                                  _buildCompactStat(
-                                    user.losses.toString(),
-                                    'Поражений',
-                                    Icons.close,
-                                  ),
-                                  _buildCompactStat(
-                                    '${user.winRate.toStringAsFixed(0)}%',
-                                    'Винрейт',
-                                    Icons.trending_up,
-                                  ),
-                                ],
-                              ),
-                              
-                              const SizedBox(height: 16),
-                              
-                              // Рейтинг и баллы
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.warning.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.star, color: AppColors.warning),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            user.rating.toStringAsFixed(1),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.score, color: AppColors.primary),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            user.totalScore.toString(),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      // Предстоящие игры
-                      if (_upcomingGames.isNotEmpty) ...[
-                        Card(
-                          child: Padding(
-                            padding: AppSizes.cardPadding,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Предстоящие игры',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                ..._upcomingGames.map((game) => _buildGameItem(game, true)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      
-                      // Последние игры
-                      if (user.recentGames.isNotEmpty) ...[
-                        Card(
-                          child: Padding(
-                            padding: AppSizes.cardPadding,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Последние игры',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                ...user.recentGames.take(3).map((game) => _buildGameItem(game, false)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      
-                      // Достижения
-                      if (user.achievements.isNotEmpty) ...[
-                        Card(
-                          child: Padding(
-                            padding: AppSizes.cardPadding,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Достижения',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: user.achievements.map((achievement) => Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.warning.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          _getAchievementIcon(achievement),
-                                          size: 14,
-                                          color: AppColors.warning,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          achievement.length > 15 
-                                              ? '${achievement.substring(0, 15)}...' 
-                                              : achievement,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )).toList(),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      
-                      // Лучшие партнеры
-                      if (user.bestTeammates.isNotEmpty) ...[
-                        Card(
-                          child: Padding(
-                            padding: AppSizes.cardPadding,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Лучшие партнеры',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                ...user.bestTeammates.take(3).toList().asMap().entries.map((entry) {
-                                  final index = entry.key;
-                                  final partner = entry.value;
-                                  return _buildPartnerItem(partner, index + 1);
-                                }).toList(),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      
-                      // Друзья (показываем всегда)
-                      Card(
-                        child: Padding(
-                          padding: AppSizes.cardPadding,
+                    )
+                  : null,
+            ),
+                        const SizedBox(width: 16),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+            Text(
+              user.name,
+              style: const TextStyle(
+                                  fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+                                user.email.length > 20 
+                                    ? '${user.email.substring(0, 20)}...' 
+                                    : user.email,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text(
-                                    'Друзья',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  Icon(
+                                    Icons.circle,
+                                    size: 12,
+                                    color: _getStatusColor(user.status),
                                   ),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    '${user.friends.length}',
+                                    user.statusDisplayName,
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                      color: _getStatusColor(user.status),
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
-                              if (user.friends.isEmpty)
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.background,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: AppColors.divider),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        Icons.people_outline,
-                                        size: 48,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'У вас пока нет друзей',
-                                        style: TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        'Играйте в командах и добавляйте игроков в друзья!',
-                                        style: TextStyle(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 12,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                FutureBuilder<List<UserModel?>>(
-                                  future: _loadFriends(user.friends),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.connectionState == ConnectionState.waiting) {
-                                      return const Center(child: CircularProgressIndicator());
-                                    }
-                                    
-                                    if (snapshot.hasError) {
-                                      return Text('Ошибка загрузки друзей: ${snapshot.error}');
-                                    }
-                                    
-                                    final friends = snapshot.data ?? [];
-                                    if (friends.isEmpty) {
-                                      return const Text('Нет друзей для отображения');
-                                    }
-                                    
-                                    return Column(
-                                      children: friends.take(5).map((friend) => 
-                                        friend != null ? _buildFriendItem(friend) : Container()
-                                      ).toList(),
-                                    );
-                                  },
-                                ),
                             ],
                           ),
                         ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Описание игрока
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _isEditingBio
+                                ? TextField(
+                                    controller: _bioController,
+                                    maxLength: 64,
+                                    decoration: const InputDecoration(
+                                      hintText: 'Расскажите о себе...',
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                    ),
+                                    style: const TextStyle(fontSize: 14),
+                                  )
+                                : Text(
+                                    user.bio.isEmpty ? 'Расскажите о себе...' : user.bio,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: user.bio.isEmpty 
+                                          ? AppColors.textSecondary 
+                                          : AppColors.text,
+                                    ),
+                                  ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              _isEditingBio ? Icons.check : Icons.edit,
+                              size: 16,
+                            ),
+                            onPressed: () => _toggleBioEdit(user),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Основная статистика в компактном виде
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildCompactStat(
+                          user.gamesPlayed.toString(),
+                          'Игр',
+                          Icons.sports_volleyball,
+                        ),
+                        _buildCompactStat(
+                          user.wins.toString(),
+                          'Побед',
+                          Icons.emoji_events,
+                        ),
+                        _buildCompactStat(
+                          user.losses.toString(),
+                          'Поражений',
+                          Icons.close,
+                        ),
+                        _buildCompactStat(
+                          '${user.winRate.toStringAsFixed(0)}%',
+                          'Винрейт',
+                          Icons.trending_up,
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Рейтинг и баллы
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.star, color: AppColors.warning),
+                                const SizedBox(width: 8),
+                                Text(
+                                  user.rating.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.score, color: AppColors.primary),
+                                const SizedBox(width: 8),
+                                Text(
+                                  user.totalScore.toString(),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    // Информация о команде
+                    if (user.teamName != null) ...[
                       const SizedBox(height: 16),
-                      
-                      // Временные кнопки для изменения роли (только для разработки)
-                      if (user.role == UserRole.user)
-                        ElevatedButton.icon(
-                          onPressed: () => _changeToOrganizer(context, ref, user),
-                          icon: const Icon(Icons.admin_panel_settings),
-                          label: const Text('Стать организатором'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.organizerRole,
-                            foregroundColor: Colors.white,
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppColors.secondary.withValues(alpha: 0.3),
                           ),
                         ),
-                      
-                      if (user.role == UserRole.organizer)
-                        ElevatedButton.icon(
-                          onPressed: () => _changeToUser(context, ref, user),
-                          icon: const Icon(Icons.person),
-                          label: const Text('Стать пользователем'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.userRole,
-                            foregroundColor: Colors.white,
-                          ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.groups,
+                              color: AppColors.secondary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        user.teamName!,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.secondary,
+                                        ),
+                                      ),
+                                      if (user.isTeamCaptain) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.warning,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            'Капитан',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const Text(
+                                    'Постоянная команда',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      
-                      const SizedBox(height: 20),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
+            ),
+            
+            const SizedBox(height: AppSizes.largeSpace),
+            
+            // Остальное содержимое профиля можно добавить здесь
+            // Например, достижения, предстоящие игры и т.д.
+          ],
+        ),
       ),
     );
   }
@@ -1057,6 +918,78 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               _buildProfileRowInDialog('Всего очков', friend.totalScore.toString()),
               _buildProfileRowInDialog('Игр сыграно', friend.gamesPlayed.toString()),
               _buildProfileRowInDialog('Процент побед', '${friend.winRate.toStringAsFixed(1)}%'),
+              
+              // Информация о команде
+              if (friend.teamName != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppColors.secondary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.groups,
+                        color: AppColors.secondary,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  friend.teamName!,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.secondary,
+                                  ),
+                                ),
+                                if (friend.isTeamCaptain) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.warning,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'Капитан',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const Text(
+                              'Постоянная команда',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               
               if (friend.bio.isNotEmpty) ...[
                 const SizedBox(height: 8),

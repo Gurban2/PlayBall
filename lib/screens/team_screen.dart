@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../utils/constants.dart';
 import '../models/user_model.dart';
+import '../models/team_model.dart';
+import '../models/room_model.dart';
+import '../providers/providers.dart';
+import '../widgets/player_card.dart';
 
 // Модель команды (временная, пока не создана отдельная модель)
 class TeamModel {
@@ -402,25 +407,9 @@ class _TeamScreenState extends State<TeamScreen> {
               itemCount: _availableUsers.length,
               itemBuilder: (context, index) {
                 final user = _availableUsers[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.primary,
-                    child: user.photoUrl != null
-                        ? ClipOval(
-                            child: Image.network(
-                              user.photoUrl!,
-                              width: AppSizes.smallAvatarSize,
-                              height: AppSizes.smallAvatarSize,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(Icons.person, color: Colors.white);
-                              },
-                            ),
-                          )
-                        : const Icon(Icons.person, color: Colors.white),
-                  ),
-                  title: Text(user.name),
-                  subtitle: Text('Рейтинг: ${user.rating}'),
+                return PlayerCard(
+                  player: user,
+                  compact: true,
                   onTap: () {
                     Navigator.of(context).pop();
                     _addUserToTeam(team, user);
@@ -458,35 +447,13 @@ class _TeamScreenState extends State<TeamScreen> {
             ),
             const SizedBox(height: AppSizes.mediumSpace),
             
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _availableUsers.length,
-              separatorBuilder: (context, index) => const Divider(),
-              itemBuilder: (context, index) {
-                final user = _availableUsers[index];
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.primary,
-                    child: user.photoUrl != null
-                        ? ClipOval(
-                            child: Image.network(
-                              user.photoUrl!,
-                              width: AppSizes.smallAvatarSize,
-                              height: AppSizes.smallAvatarSize,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(Icons.person, color: Colors.white);
-                              },
-                            ),
-                          )
-                        : const Icon(Icons.person, color: Colors.white),
-                  ),
-                  title: Text(user.name),
-                  subtitle: Text('Рейтинг: ${user.rating}'),
+            Column(
+              children: _availableUsers.map((user) {
+                return PlayerCard(
+                  player: user,
+                  compact: true,
                 );
-              },
+              }).toList(),
             ),
           ],
         ),
