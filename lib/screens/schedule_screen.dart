@@ -16,9 +16,9 @@ class ScheduleScreen extends ConsumerStatefulWidget {
 class _ScheduleScreenState extends ConsumerState<ScheduleScreen> 
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  String _selectedLocation = 'Все локации';
-  GameMode? _selectedGameMode;
-  bool _showFilters = false;
+  String _sortBy = 'Время начала';
+  bool _sortAscending = true;
+  bool _showSortOptions = false;
 
   @override
   void initState() {
@@ -66,20 +66,43 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     );
   }
 
-  List<RoomModel> _filterRooms(List<RoomModel> rooms) {
-    return rooms.where((room) {
-      // Фильтр по локации
-      if (_selectedLocation != 'Все локации' && room.location != _selectedLocation) {
-        return false;
-      }
-      
-      // Фильтр по режиму игры
-      if (_selectedGameMode != null && room.gameMode != _selectedGameMode) {
-        return false;
-      }
-      
-      return true;
-    }).toList();
+  List<RoomModel> _sortRooms(List<RoomModel> rooms) {
+    final sortedRooms = [...rooms];
+    
+    switch (_sortBy) {
+      case 'Время начала':
+        sortedRooms.sort((a, b) => _sortAscending 
+            ? a.startTime.compareTo(b.startTime)
+            : b.startTime.compareTo(a.startTime));
+        break;
+      case 'Название':
+        sortedRooms.sort((a, b) => _sortAscending 
+            ? a.title.compareTo(b.title)
+            : b.title.compareTo(a.title));
+        break;
+      case 'Локация':
+        sortedRooms.sort((a, b) => _sortAscending 
+            ? a.location.compareTo(b.location)
+            : b.location.compareTo(a.location));
+        break;
+      case 'Участники':
+        sortedRooms.sort((a, b) => _sortAscending 
+            ? a.participants.length.compareTo(b.participants.length)
+            : b.participants.length.compareTo(a.participants.length));
+        break;
+      case 'Цена':
+        sortedRooms.sort((a, b) => _sortAscending 
+            ? a.pricePerPerson.compareTo(b.pricePerPerson)
+            : b.pricePerPerson.compareTo(a.pricePerPerson));
+        break;
+      case 'Тип игры':
+        sortedRooms.sort((a, b) => _sortAscending 
+            ? a.gameMode.toString().compareTo(b.gameMode.toString())
+            : b.gameMode.toString().compareTo(a.gameMode.toString()));
+        break;
+    }
+    
+    return sortedRooms;
   }
 
   @override
@@ -96,20 +119,20 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         elevation: 0,
         actions: [
           IconButton(
-            icon: Icon(_showFilters ? Icons.filter_list_off : Icons.filter_list),
+            icon: Icon(_showSortOptions ? Icons.sort_outlined : Icons.sort),
             onPressed: () {
               setState(() {
-                _showFilters = !_showFilters;
+                _showSortOptions = !_showSortOptions;
               });
             },
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(_showFilters ? 160 : 48),
+          preferredSize: Size.fromHeight(_showSortOptions ? 200 : 48),
           child: Column(
             children: [
-              // Фильтры
-              if (_showFilters) _buildFiltersSection(),
+              // Панель сортировки
+              if (_showSortOptions) _buildSortOptionsSection(),
               
               // Табы
               TabBar(
@@ -136,60 +159,108 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // Активные игры
-          _buildGamesList(activeRoomsAsync, 'Нет активных игр'),
-          
-          // Запланированные игры
-          _buildGamesList(plannedRoomsAsync, 'Нет запланированных игр'),
-          
-          // Мои игры
-          _buildMyGames(),
-        ],
+      body: GestureDetector(
+        onTap: () {
+          if (_showSortOptions) {
+            setState(() {
+              _showSortOptions = false;
+            });
+          }
+        },
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            // Активные игры
+            _buildGamesList(activeRoomsAsync, 'Нет активных игр'),
+            
+            // Запланированные игры
+            _buildGamesList(plannedRoomsAsync, 'Нет запланированных игр'),
+            
+            // Мои игры
+            _buildMyGames(),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildFiltersSection() {
+  Widget _buildSortOptionsSection() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.1),
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(12),
+          bottomRight: Radius.circular(12),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          // Локация и режим игры
+          // Заголовок с кнопкой закрытия
+          Row(
+            children: [
+              const Icon(Icons.sort, color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Сортировка',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.text,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showSortOptions = false;
+                  });
+                },
+                icon: const Icon(Icons.close, size: 20),
+                color: AppColors.textSecondary,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // Сортировка
           Row(
             children: [
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.background,
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: _selectedLocation,
+                      value: _sortBy,
                       isExpanded: true,
-                      icon: const Icon(Icons.location_on, size: 20),
-                      items: ['Все локации', ...AppStrings.availableLocations]
-                          .map((location) => DropdownMenuItem(
-                                value: location,
+                      icon: const Icon(Icons.expand_more, size: 20),
+                      items: ['Время начала', 'Название', 'Локация', 'Участники', 'Цена', 'Тип игры']
+                          .map((sortOption) => DropdownMenuItem(
+                                value: sortOption,
                                 child: Text(
-                                  location,
+                                  sortOption,
                                   style: const TextStyle(fontSize: 14),
                                 ),
                               ))
                           .toList(),
                       onChanged: (value) {
                         setState(() {
-                          _selectedLocation = value!;
+                          _sortBy = value!;
                         });
                       },
                     ),
@@ -203,31 +274,28 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.background,
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
                   ),
                   child: DropdownButtonHideUnderline(
-                    child: DropdownButton<GameMode?>(
-                      value: _selectedGameMode,
+                    child: DropdownButton<bool>(
+                      value: _sortAscending,
                       isExpanded: true,
-                      hint: const Text('Режим игры', style: TextStyle(fontSize: 14)),
-                      icon: const Icon(Icons.sports, size: 20),
+                      icon: const Icon(Icons.expand_more, size: 20),
                       items: [
-                        const DropdownMenuItem<GameMode?>(
-                          value: null,
-                          child: Text('Все режимы', style: TextStyle(fontSize: 14)),
+                        const DropdownMenuItem<bool>(
+                          value: true,
+                          child: Text('↑ По возрастанию', style: TextStyle(fontSize: 14)),
                         ),
-                        ...GameMode.values.map((mode) => DropdownMenuItem(
-                              value: mode,
-                              child: Text(
-                                _getGameModeDisplayName(mode),
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            )),
+                        const DropdownMenuItem<bool>(
+                          value: false,
+                          child: Text('↓ По убыванию', style: TextStyle(fontSize: 14)),
+                        ),
                       ],
                       onChanged: (value) {
                         setState(() {
-                          _selectedGameMode = value;
+                          _sortAscending = value!;
                         });
                       },
                     ),
@@ -239,24 +307,22 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
           
           const SizedBox(height: 12),
           
-          // Кнопка сброса фильтров
+          // Кнопка сброса сортировки
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
                 setState(() {
-                  _selectedLocation = 'Все локации';
-                  _selectedGameMode = null;
+                  _sortBy = 'Время начала';
+                  _sortAscending = true;
                 });
               },
-              icon: const Icon(Icons.clear, color: Colors.white, size: 18),
-              label: const Text(
-                'Сбросить фильтры',
-                style: TextStyle(color: Colors.white),
-              ),
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Сбросить сортировку'),
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.white),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                foregroundColor: AppColors.primary,
+                side: BorderSide(color: AppColors.primary),
+                padding: const EdgeInsets.symmetric(vertical: 8),
               ),
             ),
           ),
@@ -290,9 +356,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         ),
       ),
       data: (rooms) {
-        final filteredRooms = _filterRooms(rooms);
+        final sortedRooms = _sortRooms(rooms);
         
-        if (filteredRooms.isEmpty) {
+        if (sortedRooms.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -304,10 +370,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                 ),
                 const SizedBox(height: 16),
                 Text(emptyMessage),
-                if (_selectedLocation != 'Все локации' || _selectedGameMode != null) ...[
+                if (_sortBy != 'Время начала' || !_sortAscending) ...[
                   const SizedBox(height: 8),
                   const Text(
-                    'Попробуйте изменить фильтры',
+                    'Попробуйте изменить сортировку',
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                 ],
@@ -326,9 +392,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
           },
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: filteredRooms.length,
+            itemCount: sortedRooms.length,
             itemBuilder: (context, index) {
-              return _buildEnhancedRoomCard(filteredRooms[index]);
+              return _buildEnhancedRoomCard(sortedRooms[index]);
             },
           ),
         );

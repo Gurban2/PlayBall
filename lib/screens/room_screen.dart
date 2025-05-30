@@ -378,6 +378,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
               '${room.endTime.day}.${room.endTime.month}.${room.endTime.year} '
               '${room.endTime.hour.toString().padLeft(2, '0')}:'
               '${room.endTime.minute.toString().padLeft(2, '0')}'),
+            _buildInfoRow(Icons.sports, 'Режим игры', _getGameModeDisplayName(room.gameMode)),
             _buildInfoRow(Icons.people, AppStrings.participants, 
               '${room.participants.length}/${room.maxParticipants}'),
           ],
@@ -888,7 +889,9 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                           ? 'Игра уже началась'
                           : hasStarted
                               ? 'Игра уже началась'
-                              : 'Выбрать команду',
+                              : room.isTeamMode
+                                  ? 'Присоединиться к матчу моей командой'
+                                  : 'Выбрать команду',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -1035,6 +1038,17 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
           ),
         );
       }
+    }
+  }
+
+  String _getGameModeDisplayName(GameMode gameMode) {
+    switch (gameMode) {
+      case GameMode.normal:
+        return 'Обычный';
+      case GameMode.team_friendly:
+        return 'Командный';
+      case GameMode.tournament:
+        return 'Турнир';
     }
   }
 } 

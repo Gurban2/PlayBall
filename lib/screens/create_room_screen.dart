@@ -22,7 +22,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _maxParticipantsController = TextEditingController();
-  final _numberOfTeamsController = TextEditingController();
+  final _maxTeamsController = TextEditingController();
   final _team1NameController = TextEditingController();
   final _team2NameController = TextEditingController();
 
@@ -41,7 +41,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   void initState() {
     super.initState();
     _maxParticipantsController.text = '12'; // Минимум 12 участников
-    _numberOfTeamsController.text = '2'; // Минимум 2 команды
+    _maxTeamsController.text = '2'; // Минимум 2 команды
     _team1NameController.text = 'Команда 1';
     _team2NameController.text = 'Команда 2';
     _loadActiveRoomsCount();
@@ -119,7 +119,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     _titleController.dispose();
     _descriptionController.dispose();
     _maxParticipantsController.dispose();
-    _numberOfTeamsController.dispose();
+    _maxTeamsController.dispose();
     _team1NameController.dispose();
     _team2NameController.dispose();
     super.dispose();
@@ -258,9 +258,13 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         startTime: _startTime,
         endTime: _endTime,
         organizerId: user.id,
-        maxParticipants: int.parse(_maxParticipantsController.text),
+        maxParticipants: _selectedGameMode.isTeamMode 
+            ? int.parse(_maxTeamsController.text) * 6 // Автоматически рассчитываем участников (6 игроков на команду)
+            : int.parse(_maxParticipantsController.text),
         pricePerPerson: 0.0, // Убираем оплату
-        numberOfTeams: 2, // Фиксированное количество команд
+        numberOfTeams: _selectedGameMode.isTeamMode 
+            ? int.parse(_maxTeamsController.text)
+            : 2, // Для обычного режима всегда 2 команды
         gameMode: _selectedGameMode,
         photoUrl: null, // Пока без фото
         teamNames: _selectedGameMode == GameMode.normal 
@@ -528,71 +532,6 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                               maxLength: 30,
                             ),
                             
-                            // Информационное сообщение для командных режимов
-                            if ((_selectedGameMode == GameMode.team_friendly || _selectedGameMode == GameMode.tournament)) ...[
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: AppColors.primary.withValues(alpha: 0.3),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.info_outline,
-                                      color: AppColors.primary,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _selectedGameMode == GameMode.team_friendly 
-                                                ? (_userTeamName != null && _userTeamName!.isNotEmpty)
-                                                    ? 'Командный режим: к названию добавится "- Команды". Первая команда: "$_userTeamName", вторая: "Команда 2"'
-                                                    : 'Командный режим: для создания нужна своя команда! Создайте команду в профиле.'
-                                                : 'Турнирный режим: к названию добавится "- Турнир". Команды: "Участник 1", "Участник 2"',
-                                            style: TextStyle(
-                                              color: (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
-                                                  ? AppColors.error
-                                                  : AppColors.primary,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          if (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty)) ...[
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                TextButton.icon(
-                                                  onPressed: () async {
-                                                    await _loadUserTeamInfo();
-                                                    setState(() {});
-                                                  },
-                                                  icon: const Icon(Icons.refresh, size: 16),
-                                                  label: const Text('Обновить'),
-                                                  style: TextButton.styleFrom(
-                                                    foregroundColor: AppColors.primary,
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                    minimumSize: Size.zero,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            
                             const SizedBox(height: 12),
 
                             // Описание
@@ -671,13 +610,17 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                 SizedBox(
                                   width: 100,
                                   child: TextFormField(
-                                    controller: _maxParticipantsController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Игроки',
-                                      border: OutlineInputBorder(),
+                                    controller: _selectedGameMode.isTeamMode 
+                                        ? _maxTeamsController 
+                                        : _maxParticipantsController,
+                                    decoration: InputDecoration(
+                                      labelText: _selectedGameMode.isTeamMode ? 'Команды' : 'Игроки',
+                                      border: const OutlineInputBorder(),
                                       isDense: true,
                                     ),
-                                    validator: Validators.validateMaxParticipants,
+                                    validator: _selectedGameMode.isTeamMode 
+                                        ? Validators.validateMaxTeams 
+                                        : Validators.validateMaxParticipants,
                                     keyboardType: TextInputType.number,
                                   ),
                                 ),
@@ -765,147 +708,6 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                   return null;
                                 },
                                 maxLength: 20,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Информационная карточка для командных и турнирных режимов
-                    if (_selectedGameMode == GameMode.team_friendly || _selectedGameMode == GameMode.tournament) ...[
-                      Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.info, color: AppColors.secondary),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _selectedGameMode == GameMode.team_friendly 
-                                          ? 'Команды (автоматически)'
-                                          : 'Участники турнира (автоматически)',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  if (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
-                                    IconButton(
-                                      onPressed: () async {
-                                        await _loadUserTeamInfo();
-                                        setState(() {});
-                                      },
-                                      icon: const Icon(Icons.refresh),
-                                      color: AppColors.primary,
-                                      tooltip: 'Обновить данные команды',
-                                      iconSize: 20,
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Первая команда/участник
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _selectedGameMode == GameMode.team_friendly 
-                                          ? ((_userTeamName != null && _userTeamName!.isNotEmpty) 
-                                              ? Icons.group_outlined 
-                                              : Icons.warning_outlined)
-                                          : Icons.person_outline,
-                                      color: (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
-                                          ? AppColors.error
-                                          : AppColors.primary,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _selectedGameMode == GameMode.team_friendly 
-                                            ? (_userTeamName ?? 'Нет команды')
-                                            : 'Участник 1',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 16,
-                                          color: (_selectedGameMode == GameMode.team_friendly && (_userTeamName == null || _userTeamName!.isEmpty))
-                                              ? AppColors.error
-                                              : AppColors.text,
-                                        ),
-                                      ),
-                                    ),
-                                    if (_selectedGameMode == GameMode.team_friendly)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: (_userTeamName != null && _userTeamName!.isNotEmpty)
-                                              ? AppColors.primary
-                                              : AppColors.error,
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          (_userTeamName != null && _userTeamName!.isNotEmpty)
-                                              ? 'Ваша команда'
-                                              : 'Нет команды',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Вторая команда/участник
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.secondary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _selectedGameMode == GameMode.team_friendly 
-                                          ? Icons.group 
-                                          : Icons.person,
-                                      color: AppColors.secondary,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _selectedGameMode == GameMode.team_friendly 
-                                            ? 'Команда 2'
-                                            : 'Участник 2',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
                               ),
                             ],
                           ),

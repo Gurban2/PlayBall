@@ -225,4 +225,26 @@ class Validators {
     
     return null;
   }
+  
+  // НОВОЕ: Валидация максимального количества команд
+  static String? validateMaxTeams(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Укажите количество команд';
+    }
+    
+    final intValue = int.tryParse(value);
+    if (intValue == null) {
+      return 'Введите корректное число';
+    }
+    
+    if (intValue < 2) {
+      return 'Минимальное количество команд - 2';
+    }
+    
+    if (intValue > 8) {
+      return 'Максимальное количество команд - 8';
+    }
+    
+    return null;
+  }
 } 

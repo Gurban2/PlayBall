@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import '../services/firestore_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -20,23 +21,24 @@ class AuthService {
     try {
       if (_auth.currentUser == null) return null;
       
-      final doc = await _firestore
-          .collection('users')
-          .doc(_auth.currentUser!.uid)
-          .get();
+      // Используем FirestoreService для получения пользователя с проверкой целостности команды
+      final firestoreService = FirestoreService();
+      final user = await firestoreService.getUserById(_auth.currentUser!.uid);
       
-      if (!doc.exists) {
-        // Возвращаем тестовые данные, если пользователь не найден в Firestore
-        return UserModel(
-          id: _auth.currentUser!.uid,
-          email: _auth.currentUser!.email ?? '',
-          name: _auth.currentUser!.displayName ?? 'Пользователь',
-          role: UserRole.user,
-          createdAt: DateTime.now(),
-        );
+      if (user != null) {
+        // Обновляем время последнего входа
+        await _updateLastLogin(_auth.currentUser!.uid);
+        return user;
       }
       
-      return UserModel.fromMap(doc.data()!);
+      // Если пользователь не найден в Firestore, возвращаем тестовые данные
+      return UserModel(
+        id: _auth.currentUser!.uid,
+        email: _auth.currentUser!.email ?? '',
+        name: _auth.currentUser!.displayName ?? 'Пользователь',
+        role: UserRole.user,
+        createdAt: DateTime.now(),
+      );
     } catch (e) {
       debugPrint('Ошибка получения данных пользователя: $e');
       
@@ -122,9 +124,6 @@ class AuthService {
         email: email,
         password: password,
       );
-      
-      // Обновление времени последнего входа
-      await _updateLastLogin(userCredential.user!.uid);
       
       return userCredential;
     } catch (e) {

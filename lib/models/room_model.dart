@@ -13,6 +13,12 @@ enum GameMode {
   tournament,    // Турнир - команда на команду (от 2х команд)
 }
 
+// НОВОЕ: Extension для GameMode
+extension GameModeExtension on GameMode {
+  bool get isTeamMode => this == GameMode.team_friendly || this == GameMode.tournament;
+  bool get isNormalMode => this == GameMode.normal;
+}
+
 class RoomModel {
   final String id;
   final String title;

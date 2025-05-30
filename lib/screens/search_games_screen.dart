@@ -140,162 +140,150 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                 child: Column(
                   children: [
                     // Поиск по названию
-                    GestureDetector(
-                      onTap: () {}, // Предотвращаем закрытие фильтров при клике на поле поиска
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Поиск игр...',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _isSearching
-                              ? const Padding(
-                                  padding: EdgeInsets.all(12.0),
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                )
-                              : null,
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (value) {
-                          // Отменяем предыдущий таймер
-                          _debounceTimer?.cancel();
-                          
-                          // Показываем индикатор загрузки
-                          setState(() {
-                            _isSearching = true;
-                          });
-                          
-                          // Устанавливаем новый таймер с задержкой 500мс
-                          _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-                            setState(() {
-                              _isSearching = false;
-                            });
-                          });
-                        },
+                    TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Поиск игр...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _isSearching
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : null,
+                        border: const OutlineInputBorder(),
                       ),
+                      onChanged: (value) {
+                        // Отменяем предыдущий таймер
+                        _debounceTimer?.cancel();
+                        
+                        // Показываем индикатор загрузки
+                        setState(() {
+                          _isSearching = true;
+                        });
+                        
+                        // Устанавливаем новый таймер с задержкой 500мс
+                        _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+                          setState(() {
+                            _isSearching = false;
+                          });
+                        });
+                      },
                     ),
                     const SizedBox(height: AppSizes.mediumSpace),
                     
                     // Фильтры
-                    GestureDetector(
-                      onTap: () {}, // Предотвращаем закрытие фильтров
-                      child: Row(
-                        children: [
-                          // Локация
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedLocation,
-                              decoration: const InputDecoration(
-                                labelText: 'Город',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.location_on),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              ),
-                              style: const TextStyle(fontSize: 13),
-                              items: _locations.map((location) {
-                                return DropdownMenuItem(
-                                  value: location,
-                                  child: Text(
-                                    location,
-                                    style: const TextStyle(fontSize: 13),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedLocation = value!;
-                                });
-                              },
+                    Row(
+                      children: [
+                        // Локация
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedLocation,
+                            decoration: const InputDecoration(
+                              labelText: 'Город',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.location_on),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                             ),
+                            style: const TextStyle(fontSize: 13),
+                            items: _locations.map((location) {
+                              return DropdownMenuItem(
+                                value: location,
+                                child: Text(
+                                  location,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedLocation = value!;
+                              });
+                            },
                           ),
-                          const SizedBox(width: AppSizes.smallSpace),
-                          
-                          // Уровень
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedLevel,
-                              decoration: const InputDecoration(
-                                labelText: 'Уровень',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.trending_up),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              ),
-                              style: const TextStyle(fontSize: 13),
-                              items: _levels.map((level) {
-                                return DropdownMenuItem(
-                                  value: level,
-                                  child: Text(
-                                    level,
-                                    style: const TextStyle(fontSize: 13),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedLevel = value!;
-                                });
-                              },
+                        ),
+                        const SizedBox(width: AppSizes.smallSpace),
+                        
+                        // Уровень
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedLevel,
+                            decoration: const InputDecoration(
+                              labelText: 'Уровень',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.trending_up),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                             ),
+                            style: const TextStyle(fontSize: 13),
+                            items: _levels.map((level) {
+                              return DropdownMenuItem(
+                                value: level,
+                                child: Text(
+                                  level,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedLevel = value!;
+                              });
+                            },
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSizes.mediumSpace),
                     
                     // Дата и время
-                    GestureDetector(
-                      onTap: () {}, // Предотвращаем закрытие фильтров
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _selectDate,
-                              icon: const Icon(Icons.calendar_today),
-                              label: Text(
-                                _selectedDate != null
-                                    ? '${_selectedDate!.day}.${_selectedDate!.month}.${_selectedDate!.year}'
-                                    : 'Выбрать дату',
-                              ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _selectDate,
+                            icon: const Icon(Icons.calendar_today),
+                            label: Text(
+                              _selectedDate != null
+                                  ? '${_selectedDate!.day}.${_selectedDate!.month}.${_selectedDate!.year}'
+                                  : 'Выбрать дату',
                             ),
                           ),
-                          const SizedBox(width: AppSizes.smallSpace),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _selectTime,
-                              icon: const Icon(Icons.access_time),
-                              label: Text(
-                                _selectedTime != null
-                                    ? '${_selectedTime!.hour}:${_selectedTime!.minute.toString().padLeft(2, '0')}'
-                                    : 'Выбрать время',
-                              ),
+                        ),
+                        const SizedBox(width: AppSizes.smallSpace),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _selectTime,
+                            icon: const Icon(Icons.access_time),
+                            label: Text(
+                              _selectedTime != null
+                                  ? '${_selectedTime!.hour}:${_selectedTime!.minute.toString().padLeft(2, '0')}'
+                                  : 'Выбрать время',
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSizes.smallSpace),
                     
                     // Кнопка очистки фильтров
-                    GestureDetector(
-                      onTap: () {}, // Предотвращаем закрытие фильтров
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton.icon(
-                            onPressed: _clearFilters,
-                            icon: const Icon(Icons.clear_all, size: 16),
-                            label: const Text('Очистить фильтры'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.grey[600],
-                            ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: _clearFilters,
+                          icon: const Icon(Icons.clear_all, size: 16),
+                          label: const Text('Очистить фильтры'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.grey[600],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

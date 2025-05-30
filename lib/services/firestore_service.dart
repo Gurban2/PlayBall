@@ -557,7 +557,30 @@ class FirestoreService {
         return null;
       }
       
-      return UserModel.fromMap(doc.data()!);
+      final user = UserModel.fromMap(doc.data()!);
+      
+      // Проверяем целостность данных о команде
+      if (user.teamId != null) {
+        final teamDoc = await _firestore.collection(FirestorePaths.userTeamsCollection).doc(user.teamId!).get();
+        if (!teamDoc.exists) {
+          // Команда не существует, очищаем ссылку
+          await _firestore.collection('users').doc(userId).update({
+            'teamId': null,
+            'teamName': null,
+            'isTeamCaptain': false,
+            'updatedAt': Timestamp.now(),
+          });
+          
+          // Возвращаем пользователя с очищенными данными команды
+          return user.copyWith(
+            teamId: null,
+            teamName: null,
+            isTeamCaptain: false,
+          );
+        }
+      }
+      
+      return user;
     } catch (e) {
       debugPrint('Ошибка получения пользователя: $e');
       return null;
@@ -670,13 +693,34 @@ class FirestoreService {
   // Создание команд для комнаты
   Future<void> _createTeamsForRoom(String roomId, int numberOfTeams, List<String>? teamNames) async {
     try {
+      // Получаем информацию о комнате для определения режима игры
+      final roomDoc = await _firestore.collection('rooms').doc(roomId).get();
+      if (!roomDoc.exists) throw Exception('Комната не найдена');
+      
+      final room = RoomModel.fromMap(roomDoc.data()!);
       final batch = _firestore.batch();
       
       for (int i = 1; i <= numberOfTeams; i++) {
         final teamId = _uuid.v4();
+        String teamName;
+        
+        // Для командных матчей и турниров - особая логика названий
+        if (room.isTeamMode) {
+          if (i == 1) {
+            // Первая команда - команда организатора (будет заполнена автоматически)
+            teamName = (teamNames != null && teamNames.isNotEmpty) ? teamNames[0] : 'Команда организатора';
+          } else {
+            // Остальные команды остаются вакантными для подключения других команд
+            teamName = 'Вакантная команда ${i}';
+          }
+        } else {
+          // Для обычного режима - стандартные названия
+          teamName = (teamNames != null && teamNames.length >= i) ? teamNames[i - 1] : 'Команда $i';
+        }
+        
         final team = TeamModel(
           id: teamId,
-          name: (teamNames != null && teamNames.length >= i) ? teamNames[i - 1] : 'Команда $i',
+          name: teamName,
           roomId: roomId,
           createdAt: DateTime.now(),
         );
@@ -695,6 +739,12 @@ class FirestoreService {
   // Добавление организатора в первую команду
   Future<void> _addOrganizerToFirstTeam(String roomId, String organizerId) async {
     try {
+      // Получаем информацию о комнате
+      final roomDoc = await _firestore.collection('rooms').doc(roomId).get();
+      if (!roomDoc.exists) throw Exception('Комната не найдена');
+      
+      final room = RoomModel.fromMap(roomDoc.data()!);
+      
       // Получаем первую команду
       final teamsSnapshot = await _firestore
           .collection('teams')
@@ -704,18 +754,42 @@ class FirestoreService {
       
       if (teamsSnapshot.docs.isNotEmpty) {
         final firstTeamId = teamsSnapshot.docs.first.id;
-        
         final batch = _firestore.batch();
         
-        // Добавляем организатора в первую команду
-        batch.update(_firestore.collection('teams').doc(firstTeamId), {
-          'members': FieldValue.arrayUnion([organizerId]),
-          'updatedAt': Timestamp.now(),
-        });
+        List<String> membersToAdd = [];
         
-        // Добавляем организатора в участники комнаты
+        if (room.isTeamMode) {
+          // Для командных матчей - добавляем всю команду организатора
+          final organizerTeam = await getUserTeam(organizerId);
+          if (organizerTeam != null) {
+            membersToAdd = organizerTeam.members;
+            
+            // Обновляем название первой команды на название команды организатора
+            batch.update(_firestore.collection('teams').doc(firstTeamId), {
+              'name': organizerTeam.name,
+              'members': membersToAdd,
+              'updatedAt': Timestamp.now(),
+            });
+          } else {
+            // Если у организатора нет команды, добавляем только его
+            membersToAdd = [organizerId];
+            batch.update(_firestore.collection('teams').doc(firstTeamId), {
+              'members': FieldValue.arrayUnion(membersToAdd),
+              'updatedAt': Timestamp.now(),
+            });
+          }
+        } else {
+          // Для обычного режима - добавляем только организатора
+          membersToAdd = [organizerId];
+          batch.update(_firestore.collection('teams').doc(firstTeamId), {
+            'members': FieldValue.arrayUnion(membersToAdd),
+            'updatedAt': Timestamp.now(),
+          });
+        }
+        
+        // Добавляем всех участников в комнату
         batch.update(_firestore.collection('rooms').doc(roomId), {
-          'participants': FieldValue.arrayUnion([organizerId]),
+          'participants': FieldValue.arrayUnion(membersToAdd),
           'updatedAt': Timestamp.now(),
         });
         
@@ -807,20 +881,66 @@ class FirestoreService {
         throw Exception('Вы уже в команде "${userCurrentTeam.name}" в этой игре');
       }
 
+      // НОВОЕ: Для командных матчей и турниров - дополнительные проверки
+      if (room.isTeamMode) {
+        // Получаем информацию о пользователе
+        final userDoc = await _firestore.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+          throw Exception('Пользователь не найден');
+        }
+        
+        final user = UserModel.fromMap(userDoc.data()!);
+        
+        // Проверяем, что пользователь является организатором
+        if (user.role != UserRole.organizer) {
+          throw Exception('В командные матчи и турниры могут подавать заявки только организаторы команд');
+        }
+        
+        // Проверяем, что у пользователя есть команда
+        final userTeam = await getUserTeam(userId);
+        if (userTeam == null) {
+          throw Exception('Для участия в командном матче необходимо иметь постоянную команду');
+        }
+        
+        // Проверяем, что команда не пустая (минимум 4 человека для волейбола)
+        if (userTeam.members.length < 4) {
+          throw Exception('В команде должно быть минимум 4 игрока для участия в командном матче');
+        }
+      }
+
       final batch = _firestore.batch();
 
-      // Добавляем пользователя в команду
-      batch.update(_firestore.collection('teams').doc(teamId), {
-        'members': FieldValue.arrayUnion([userId]),
-        'updatedAt': Timestamp.now(),
-      });
-
-      // Добавляем пользователя в участники комнаты (если его там нет)
-      if (!room.participants.contains(userId)) {
-        batch.update(_firestore.collection('rooms').doc(team.roomId), {
-          'participants': FieldValue.arrayUnion([userId]),
+      if (room.isTeamMode) {
+        // Для командных матчей - добавляем всю команду организатора
+        final userTeam = await getUserTeam(userId);
+        if (userTeam != null) {
+          // Обновляем название команды и добавляем всех участников
+          batch.update(_firestore.collection('teams').doc(teamId), {
+            'name': userTeam.name,
+            'members': userTeam.members,
+            'updatedAt': Timestamp.now(),
+          });
+          
+          // Добавляем всех участников в комнату
+          batch.update(_firestore.collection('rooms').doc(team.roomId), {
+            'participants': FieldValue.arrayUnion(userTeam.members),
+            'updatedAt': Timestamp.now(),
+          });
+        }
+      } else {
+        // Для обычного режима - добавляем только пользователя
+        batch.update(_firestore.collection('teams').doc(teamId), {
+          'members': FieldValue.arrayUnion([userId]),
           'updatedAt': Timestamp.now(),
         });
+
+        // Добавляем пользователя в участники комнаты (если его там нет)
+        if (!room.participants.contains(userId)) {
+          batch.update(_firestore.collection('rooms').doc(team.roomId), {
+            'participants': FieldValue.arrayUnion([userId]),
+            'updatedAt': Timestamp.now(),
+          });
+        }
       }
 
       await batch.commit();
@@ -1568,6 +1688,24 @@ class FirestoreService {
   // Создать команду пользователя
   Future<String> createUserTeam(UserTeamModel team) async {
     try {
+      // НОВОЕ: Проверяем, что организатор не состоит уже в другой команде
+      final existingTeam = await getUserTeam(team.ownerId);
+      if (existingTeam != null) {
+        throw Exception('Вы уже состоите в команде "${existingTeam.name}". Покиньте её перед созданием новой.');
+      }
+      
+      // Проверяем, что участники команды не состоят в других командах
+      for (final memberId in team.members) {
+        final memberDoc = await _firestore.collection('users').doc(memberId).get();
+        if (memberDoc.exists) {
+          final member = UserModel.fromMap(memberDoc.data()!);
+          if (member.teamId != null) {
+            final memberUser = await getUserById(memberId);
+            throw Exception('Игрок "${memberUser?.name ?? memberId}" уже состоит в команде "${member.teamName}". Пользователь может быть только в одной команде.');
+          }
+        }
+      }
+      
       final String teamId = _uuid.v4();
       final teamWithId = team.copyWith();
       
@@ -1607,6 +1745,13 @@ class FirestoreService {
   // Обновить команду пользователя
   Future<void> updateUserTeam(String teamId, Map<String, dynamic> updates) async {
     try {
+      // Получаем текущую команду для сравнения
+      final currentTeamDoc = await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).get();
+      UserTeamModel? currentTeam;
+      if (currentTeamDoc.exists) {
+        currentTeam = UserTeamModel.fromMap(currentTeamDoc.data()!);
+      }
+      
       updates['updatedAt'] = Timestamp.now();
       await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).update(updates);
       
@@ -1614,8 +1759,24 @@ class FirestoreService {
       if (updates.containsKey('members') || updates.containsKey('name')) {
         final teamDoc = await _firestore.collection(FirestorePaths.userTeamsCollection).doc(teamId).get();
         if (teamDoc.exists) {
-          final team = UserTeamModel.fromMap(teamDoc.data()!);
-          await _updateTeamInfoForMembers(teamId, team.name, team.members, team.ownerId);
+          final updatedTeam = UserTeamModel.fromMap(teamDoc.data()!);
+          
+          // НОВОЕ: Если были удалены участники, очищаем информацию о команде у них
+          if (currentTeam != null && updates.containsKey('members')) {
+            final removedMembers = currentTeam.members
+                .where((id) => !updatedTeam.members.contains(id))
+                .toList();
+            
+            if (removedMembers.isNotEmpty) {
+              // Очищаем информацию о команде у удаленных участников
+              await _removeTeamInfoFromMembers(removedMembers);
+              
+              // НОВОЕ: Удаляем игроков из всех командных игр, где участвовала их команда
+              await _removePlayersFromTeamGames(removedMembers, currentTeam.name);
+            }
+          }
+          
+          await _updateTeamInfoForMembers(teamId, updatedTeam.name, updatedTeam.members, updatedTeam.ownerId);
         }
       }
     } catch (e) {
@@ -1765,6 +1926,294 @@ class FirestoreService {
       print('❌ Ошибка получения информации о команде пользователя: $e');
       debugPrint('Ошибка получения информации о команде пользователя: $e');
       return {'name': null, 'id': null};
+    }
+  }
+
+  // СЛУЖЕБНЫЕ МЕТОДЫ ДЛЯ ОЧИСТКИ ДАННЫХ
+
+  // Очистка всех игр и связанных данных
+  Future<void> clearAllGames() async {
+    try {
+      // Получаем все комнаты
+      final roomsSnapshot = await _firestore.collection('rooms').get();
+      
+      if (roomsSnapshot.docs.isEmpty) {
+        return;
+      }
+      
+      // Удаляем команды для всех комнат
+      final teamsSnapshot = await _firestore.collection('teams').get();
+      
+      // Удаляем оценки игроков
+      final evaluationsSnapshot = await _firestore.collection('playerEvaluations').get();
+      
+      // Удаляем все в батчах (Firestore ограничивает до 500 операций в батче)
+      const batchSize = 450; // Оставляем запас
+      
+      // Удаляем оценки
+      if (evaluationsSnapshot.docs.isNotEmpty) {
+        for (int i = 0; i < evaluationsSnapshot.docs.length; i += batchSize) {
+          final batch = _firestore.batch();
+          final endIndex = (i + batchSize > evaluationsSnapshot.docs.length) 
+              ? evaluationsSnapshot.docs.length 
+              : i + batchSize;
+          
+          for (int j = i; j < endIndex; j++) {
+            batch.delete(evaluationsSnapshot.docs[j].reference);
+          }
+          
+          await batch.commit();
+        }
+      }
+      
+      // Удаляем команды
+      if (teamsSnapshot.docs.isNotEmpty) {
+        for (int i = 0; i < teamsSnapshot.docs.length; i += batchSize) {
+          final batch = _firestore.batch();
+          final endIndex = (i + batchSize > teamsSnapshot.docs.length) 
+              ? teamsSnapshot.docs.length 
+              : i + batchSize;
+          
+          for (int j = i; j < endIndex; j++) {
+            batch.delete(teamsSnapshot.docs[j].reference);
+          }
+          
+          await batch.commit();
+        }
+      }
+      
+      // Удаляем комнаты
+      for (int i = 0; i < roomsSnapshot.docs.length; i += batchSize) {
+        final batch = _firestore.batch();
+        final endIndex = (i + batchSize > roomsSnapshot.docs.length) 
+            ? roomsSnapshot.docs.length 
+            : i + batchSize;
+        
+        for (int j = i; j < endIndex; j++) {
+          batch.delete(roomsSnapshot.docs[j].reference);
+        }
+        
+        await batch.commit();
+      }
+      
+      // Очищаем информацию об играх из профилей пользователей
+      final usersSnapshot = await _firestore.collection('users').get();
+      
+      if (usersSnapshot.docs.isNotEmpty) {
+        for (int i = 0; i < usersSnapshot.docs.length; i += batchSize) {
+          final batch = _firestore.batch();
+          final endIndex = (i + batchSize > usersSnapshot.docs.length) 
+              ? usersSnapshot.docs.length 
+              : i + batchSize;
+          
+          for (int j = i; j < endIndex; j++) {
+            final userDoc = usersSnapshot.docs[j];
+            batch.update(userDoc.reference, {
+              'gamesPlayed': 0,
+              'wins': 0,
+              'losses': 0,
+              'totalScore': 0,
+              'organizerPoints': 0,
+              'recentGames': [],
+              'activityFeed': [],
+              'achievements': [],
+              'bestTeammates': [],
+              'updatedAt': Timestamp.now(),
+            });
+          }
+          
+          await batch.commit();
+          print('✅ Очищены профили пользователей: ${i + 1}-$endIndex из ${usersSnapshot.docs.length}');
+        }
+      }
+      
+      print('🎉 Очистка всех игр завершена успешно!');
+      print('📊 Удалено:');
+      print('   - Игр: ${roomsSnapshot.docs.length}');
+      print('   - Команд: ${teamsSnapshot.docs.length}');
+      print('   - Оценок: ${evaluationsSnapshot.docs.length}');
+      print('   - Очищено профилей: ${usersSnapshot.docs.length}');
+      
+    } catch (e) {
+      print('❌ Ошибка очистки игр: $e');
+      debugPrint('Ошибка очистки игр: $e');
+      rethrow;
+    }
+  }
+
+  // Очистка только комнат (игр), оставляя команды пользователей
+  Future<void> clearOnlyRooms() async {
+    try {
+      // Получаем все комнаты
+      final roomsSnapshot = await _firestore.collection('rooms').get();
+      
+      if (roomsSnapshot.docs.isEmpty) {
+        return;
+      }
+      
+      // Собираем ID комнат для удаления связанных команд
+      final roomIds = roomsSnapshot.docs.map((doc) => doc.id).toList();
+      
+      // Удаляем команды только для этих комнат
+      print('🔍 Удаляем команды игр...');
+      final teamsSnapshot = await _firestore
+          .collection('teams')
+          .where('roomId', whereIn: roomIds.take(10).toList()) // Firestore лимит whereIn = 10
+          .get();
+      
+      print('📊 Найдено команд игр для удаления: ${teamsSnapshot.docs.length}');
+      
+      // Удаляем в батчах
+      const batchSize = 450;
+      
+      // Удаляем команды игр
+      if (teamsSnapshot.docs.isNotEmpty) {
+        for (int i = 0; i < teamsSnapshot.docs.length; i += batchSize) {
+          final batch = _firestore.batch();
+          final endIndex = (i + batchSize > teamsSnapshot.docs.length) 
+              ? teamsSnapshot.docs.length 
+              : i + batchSize;
+          
+          for (int j = i; j < endIndex; j++) {
+            batch.delete(teamsSnapshot.docs[j].reference);
+          }
+          
+          await batch.commit();
+          print('✅ Удален батч команд игр: ${i + 1}-$endIndex из ${teamsSnapshot.docs.length}');
+        }
+      }
+      
+      // Удаляем комнаты
+      for (int i = 0; i < roomsSnapshot.docs.length; i += batchSize) {
+        final batch = _firestore.batch();
+        final endIndex = (i + batchSize > roomsSnapshot.docs.length) 
+            ? roomsSnapshot.docs.length 
+            : i + batchSize;
+        
+        for (int j = i; j < endIndex; j++) {
+          batch.delete(roomsSnapshot.docs[j].reference);
+        }
+        
+        await batch.commit();
+        print('✅ Удален батч игр: ${i + 1}-$endIndex из ${roomsSnapshot.docs.length}');
+      }
+      
+      print('🎉 Очистка игр завершена успешно!');
+      print('📊 Удалено игр: ${roomsSnapshot.docs.length}');
+      print('ℹ️ Пользовательские команды сохранены');
+      
+    } catch (e) {
+      print('❌ Ошибка очистки игр: $e');
+      debugPrint('Ошибка очистки игр: $e');
+      rethrow;
+    }
+  }
+
+  // НОВОЕ: Удалить игроков из всех командных игр, где участвовала их команда
+  Future<void> _removePlayersFromTeamGames(List<String> removedPlayerIds, String teamName) async {
+    try {
+      // Ищем все комнаты, где режим игры командный или турнирный
+      final roomsSnapshot = await _firestore
+          .collection('rooms')
+          .where('gameMode', whereIn: ['team_friendly', 'tournament'])
+          .get();
+      
+      final batch = _firestore.batch();
+      int updatedRooms = 0;
+      
+      for (final roomDoc in roomsSnapshot.docs) {
+        final room = RoomModel.fromMap(roomDoc.data());
+        
+        // Проверяем, участвуют ли удаленные игроки в этой комнате
+        final playersInRoom = room.participants.where((id) => removedPlayerIds.contains(id)).toList();
+        
+        if (playersInRoom.isNotEmpty) {
+          // Ищем команды этой комнаты, которые содержат название команды игрока
+          final teamsSnapshot = await _firestore
+              .collection('teams')
+              .where('roomId', isEqualTo: room.id)
+              .get();
+          
+          for (final teamDoc in teamsSnapshot.docs) {
+            final team = TeamModel.fromMap(teamDoc.data());
+            
+            // Если это команда с нашим названием, удаляем из неё игроков
+            if (team.name == teamName || 
+                (team.name.contains(teamName) && team.members.any((id) => removedPlayerIds.contains(id)))) {
+              
+              final updatedMembers = team.members.where((id) => !removedPlayerIds.contains(id)).toList();
+              
+              // Обновляем команду
+              batch.update(_firestore.collection('teams').doc(teamDoc.id), {
+                'members': updatedMembers,
+                'membersCount': updatedMembers.length,
+                'updatedAt': Timestamp.now(),
+              });
+            }
+          }
+          
+          // Удаляем игроков из участников комнаты
+          final updatedParticipants = room.participants.where((id) => !removedPlayerIds.contains(id)).toList();
+          
+          batch.update(_firestore.collection('rooms').doc(room.id), {
+            'participants': updatedParticipants,
+            'updatedAt': Timestamp.now(),
+          });
+          
+          updatedRooms++;
+        }
+      }
+      
+      if (updatedRooms > 0) {
+        await batch.commit();
+      }
+      
+    } catch (e) {
+      debugPrint('Ошибка удаления игроков из командных игр: $e');
+    }
+  }
+
+  // СЛУЖЕБНЫЕ МЕТОДЫ ДЛЯ ОЧИСТКИ ДАННЫХ
+
+  // Очистка ссылок на несуществующие команды из профилей пользователей
+  Future<void> cleanupOrphanedTeamReferences() async {
+    try {
+      // Получаем все существующие команды
+      final teamsSnapshot = await _firestore.collection(FirestorePaths.userTeamsCollection).get();
+      final existingTeamIds = teamsSnapshot.docs.map((doc) => doc.id).toSet();
+      
+      // Получаем всех пользователей с командами
+      final usersSnapshot = await _firestore
+          .collection(FirestorePaths.usersCollection)
+          .where('teamId', isNull: false)
+          .get();
+      
+      final batch = _firestore.batch();
+      int cleanedUsers = 0;
+      
+      for (final userDoc in usersSnapshot.docs) {
+        final user = UserModel.fromMap(userDoc.data());
+        
+        // Если команда пользователя не существует, очищаем ссылку
+        if (user.teamId != null && !existingTeamIds.contains(user.teamId)) {
+          batch.update(userDoc.reference, {
+            'teamId': null,
+            'teamName': null,
+            'isTeamCaptain': false,
+            'updatedAt': Timestamp.now(),
+          });
+          cleanedUsers++;
+        }
+      }
+      
+      if (cleanedUsers > 0) {
+        await batch.commit();
+        debugPrint('Очищены ссылки на несуществующие команды у $cleanedUsers пользователей');
+      }
+      
+    } catch (e) {
+      debugPrint('Ошибка очистки ссылок на команды: $e');
+      rethrow;
     }
   }
 } 

@@ -4,8 +4,6 @@ import 'package:image_picker/image_picker.dart';
 import '../models/user_team_model.dart';
 import '../models/user_model.dart';
 import '../providers/providers.dart';
-import '../services/firestore_service.dart';
-import '../services/storage_service.dart';
 import '../utils/constants.dart';
 import '../widgets/player_card.dart';
 import '../widgets/team_member_card.dart';
@@ -96,9 +94,13 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       final user = ref.read(currentUserProvider).value;
       if (user != null) {
         final firestoreService = ref.read(firestoreServiceProvider);
-        final friends = await firestoreService.getUserFriends(user.id);
+        final allFriends = await firestoreService.getUserFriends(user.id);
+        
+        // НОВОЕ: Фильтруем только тех друзей, которые не состоят в командах
+        final availableFriends = allFriends.where((friend) => friend.teamId == null).toList();
+        
         setState(() {
-          _friends = friends;
+          _friends = availableFriends;
         });
       }
     } catch (e) {
@@ -114,31 +116,42 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       return;
     }
 
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return;
+
+    // НОВОЕ: Проверка роли - только организаторы могут создавать команды
+    if (user.role != UserRole.organizer) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Только организаторы могут создавать команды'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isCreatingTeam = true;
     });
 
     try {
-      final user = ref.read(currentUserProvider).value;
-      if (user != null) {
-        final firestoreService = ref.read(firestoreServiceProvider);
-        
-        final newTeam = UserTeamModel(
-          id: '', // Будет сгенерирован в Firestore
-          name: _teamNameController.text.trim(),
-          ownerId: user.id,
-          members: [user.id], // Организатор автоматически добавляется
-          createdAt: DateTime.now(),
-        );
+      final firestoreService = ref.read(firestoreServiceProvider);
+      
+      final newTeam = UserTeamModel(
+        id: '', // Будет сгенерирован в Firestore
+        name: _teamNameController.text.trim(),
+        ownerId: user.id,
+        members: [user.id], // Организатор автоматически добавляется
+        createdAt: DateTime.now(),
+      );
 
-        await firestoreService.createUserTeam(newTeam);
-        await _loadUserTeam(); // Перезагружаем данные
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Команда создана успешно!')),
-          );
-        }
+      await firestoreService.createUserTeam(newTeam);
+      await _loadUserTeam(); // Перезагружаем данные
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Команда создана успешно!')),
+        );
       }
     } catch (e) {
       debugPrint('Ошибка создания команды: $e');
@@ -157,6 +170,17 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
   Future<void> _addFriendToTeam(UserModel friend) async {
     if (_userTeam == null || _userTeam!.isFull) return;
 
+    // НОВОЕ: Проверяем, что друг не состоит в другой команде
+    if (friend.teamId != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${friend.name} уже состоит в команде "${friend.teamName}". Игрок может быть только в одной команде.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     try {
       final firestoreService = ref.read(firestoreServiceProvider);
       final updatedMembers = [..._userTeam!.members, friend.id];
@@ -167,6 +191,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       );
       
       await _loadUserTeam(); // Перезагружаем данные
+      await _loadFriends(); // Перезагружаем список доступных друзей
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -309,6 +334,9 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
   }
 
   Widget _buildCreateTeamView() {
+    final user = ref.read(currentUserProvider).value;
+    final isOrganizer = user?.role == UserRole.organizer;
+
     return Padding(
       padding: AppSizes.screenPadding,
       child: Column(
@@ -329,42 +357,75 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSizes.mediumSpace),
-          const Text(
-            'Создайте команду, чтобы участвовать в дружеских матчах и турнирах',
-            style: TextStyle(
+          Text(
+            isOrganizer 
+                ? 'Создайте команду, чтобы участвовать в дружеских матчах и турнирах'
+                : 'Только организаторы могут создавать команды. Вы можете присоединиться к существующей команде.',
+            style: const TextStyle(
               fontSize: 16,
               color: AppColors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSizes.extraLargeSpace),
-          TextField(
-            controller: _teamNameController,
-            decoration: const InputDecoration(
-              labelText: AppStrings.teamName,
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.edit),
-            ),
-            maxLength: 30,
-          ),
-          const SizedBox(height: AppSizes.largeSpace),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isCreatingTeam ? null : _createTeam,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+          if (isOrganizer) ...[
+            TextField(
+              controller: _teamNameController,
+              decoration: const InputDecoration(
+                labelText: AppStrings.teamName,
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.edit),
               ),
-              child: _isCreatingTeam
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                      AppStrings.createMyTeam,
-                      style: TextStyle(fontSize: 16),
-                    ),
+              maxLength: 30,
             ),
-          ),
+            const SizedBox(height: AppSizes.largeSpace),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isCreatingTeam ? null : _createTeam,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: _isCreatingTeam
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        AppStrings.createMyTeam,
+                        style: TextStyle(fontSize: 16),
+                      ),
+              ),
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.3),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: AppColors.warning,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Для создания команды необходимо получить роль организатора',
+                      style: TextStyle(
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
