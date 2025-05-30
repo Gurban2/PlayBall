@@ -68,7 +68,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Профиль'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
@@ -84,12 +83,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(
-              icon: Icon(Icons.person, size: 20),
-              text: 'Профиль',
+              icon: Icon(Icons.person, size: 24),
             ),
             Tab(
-              icon: Icon(Icons.groups, size: 20),
-              text: 'Моя команда',
+              icon: Icon(Icons.groups, size: 24),
             ),
           ],
         ),

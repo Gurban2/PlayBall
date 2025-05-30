@@ -113,7 +113,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Расписание игр'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -142,16 +141,13 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                 unselectedLabelColor: Colors.white70,
                 tabs: const [
                   Tab(
-                    icon: Icon(Icons.play_circle_outline, size: 20),
-                    text: 'Активные',
+                    icon: Icon(Icons.schedule, size: 24),
                   ),
                   Tab(
-                    icon: Icon(Icons.schedule, size: 20),
-                    text: 'Запланированные',
+                    icon: Icon(Icons.play_circle_outline, size: 24),
                   ),
                   Tab(
-                    icon: Icon(Icons.person, size: 20),
-                    text: 'Мои игры',
+                    icon: Icon(Icons.person, size: 24),
                   ),
                 ],
               ),
@@ -170,11 +166,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         child: TabBarView(
           controller: _tabController,
           children: [
-            // Активные игры
-            _buildGamesList(activeRoomsAsync, 'Нет активных игр'),
-            
             // Запланированные игры
             _buildGamesList(plannedRoomsAsync, 'Нет запланированных игр'),
+            
+            // Активные игры
+            _buildGamesList(activeRoomsAsync, 'Нет активных игр'),
             
             // Мои игры
             _buildMyGames(),
@@ -465,34 +461,28 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
 
   Widget _buildEnhancedRoomCard(RoomModel room) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
-      elevation: 4,
+      elevation: 0,
+      color: Colors.white,
       child: InkWell(
         onTap: () => _navigateToRoomDetails(room.id),
-        borderRadius: BorderRadius.circular(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Хедер карточки
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _getStatusColor(room.status).withValues(alpha: 0.1),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  topRight: Radius.circular(12),
-                ),
-              ),
-              child: Row(
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Заголовок и статус
+              Row(
                 children: [
                   Expanded(
                     child: Text(
                       room.title,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                       maxLines: 1,
@@ -500,26 +490,60 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: _getStatusColor(room.status),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _getStatusText(room.status),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 8),
+              
+              // Информация в две строки
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(Icons.location_on, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            room.location,
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          _getStatusIcon(room.status),
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
+                        Icon(Icons.people, size: 12, color: AppColors.secondary),
+                        const SizedBox(width: 2),
                         Text(
-                          _getStatusText(room.status),
+                          '${room.participants.length}/${room.maxParticipants}',
                           style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            color: AppColors.secondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -527,109 +551,31 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                   ),
                 ],
               ),
-            ),
-            
-            // Основной контент
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              
+              const SizedBox(height: 6),
+              
+              Row(
                 children: [
-                  // Описание
-                  if (room.description.isNotEmpty) ...[
-                    Text(
-                      room.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  
-                  // Информация о игре
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildInfoChip(
-                          icon: Icons.location_on,
-                          label: room.location,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildInfoChip(
-                          icon: Icons.people,
-                          label: '${room.participants.length}/${room.maxParticipants}',
-                          color: AppColors.secondary,
-                        ),
-                      ),
-                    ],
+                  Icon(Icons.access_time, size: 14, color: AppColors.warning),
+                  const SizedBox(width: 4),
+                  Text(
+                    _formatDateTime(room.startTime),
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
-                  
-                  const SizedBox(height: 8),
-                  
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildInfoChip(
-                          icon: Icons.access_time,
-                          label: _formatDateTime(room.startTime),
-                          color: AppColors.warning,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildInfoChip(
-                          icon: Icons.sports,
-                          label: _getGameModeDisplayName(room.gameMode),
-                          color: AppColors.success,
-                        ),
-                      ),
-                    ],
+                  const Spacer(),
+                  Text(
+                    _getGameModeDisplayName(room.gameMode),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -644,19 +590,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         return AppColors.success;
       case RoomStatus.cancelled:
         return AppColors.error;
-    }
-  }
-
-  IconData _getStatusIcon(RoomStatus status) {
-    switch (status) {
-      case RoomStatus.planned:
-        return Icons.schedule;
-      case RoomStatus.active:
-        return Icons.play_circle;
-      case RoomStatus.completed:
-        return Icons.check_circle;
-      case RoomStatus.cancelled:
-        return Icons.cancel;
     }
   }
 
