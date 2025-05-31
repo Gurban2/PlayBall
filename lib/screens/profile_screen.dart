@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/providers.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
-import 'my_team_screen.dart';
+import '../widgets/player_profile_dialog.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -38,7 +38,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   void _updateTabController(UserRole? userRole) {
-    final tabCount = (userRole == UserRole.organizer) ? 2 : 1;
+    final tabCount = 1; // Всегда только одна вкладка - профиль
     
     if (_tabController == null || _lastUserRole != userRole) {
       _tabController?.dispose();
@@ -111,6 +111,140 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             foregroundColor: Colors.white,
             toolbarHeight: 42.0,
             actions: [
+              // Иконка запросов дружбы
+              FutureBuilder<int>(
+                future: _getIncomingRequestsCount(),
+                builder: (context, snapshot) {
+                  final count = snapshot.data ?? 0;
+                  return Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.person_add),
+                        iconSize: 24.0,
+                        onPressed: () => context.push('/friend-requests'),
+                      ),
+                      if (count > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              count.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              
+              // Иконка приглашений в команды
+              FutureBuilder<int>(
+                future: _getIncomingTeamInvitationsCount(),
+                builder: (context, snapshot) {
+                  final count = snapshot.data ?? 0;
+                  return Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.groups),
+                        iconSize: 24.0,
+                        onPressed: () => context.push('/team-invitations'),
+                      ),
+                      if (count > 0)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: AppColors.secondary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              count.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+
+              // Иконка заявок в команды (только для владельцев команд)
+              Consumer(
+                builder: (context, ref, child) {
+                  final user = ref.watch(currentUserProvider).value;
+                  if (user?.teamId != null && user?.isTeamCaptain == true) {
+                    return FutureBuilder<int>(
+                      future: _getIncomingTeamApplicationsCount(),
+                      builder: (context, snapshot) {
+                        final count = snapshot.data ?? 0;
+                        return Stack(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.assignment),
+                              iconSize: 24.0,
+                              onPressed: () => context.push('/team-applications'),
+                            ),
+                            if (count > 0)
+                              Positioned(
+                                right: 8,
+                                top: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warning,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    count.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+              
               IconButton(
                 icon: const Icon(Icons.logout),
                 iconSize: 24.0,
@@ -123,16 +257,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white70,
               indicatorWeight: 3.0,
-              tabs: [
-                const Tab(
+              tabs: const [
+                Tab(
                   height: 48.0,
                   icon: Icon(Icons.person, size: 24),
                 ),
-                if (user.role == UserRole.organizer)
-                  const Tab(
-                    height: 48.0,
-                    icon: Icon(Icons.groups, size: 24),
-                  ),
               ],
             ),
           ),
@@ -141,9 +270,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             children: [
               // Вкладка профиля
               _buildProfileTab(user),
-              // Вкладка команды - только для организаторов
-              if (user.role == UserRole.organizer)
-                const MyTeamScreen(),
             ],
           ),
         );
@@ -451,6 +577,73 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
             const SizedBox(height: AppSizes.largeSpace),
 
+            // Dashboard для организатора
+            if (user.role == UserRole.organizer || user.role == UserRole.admin) ...[
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: InkWell(
+                  onTap: () => context.push(AppRoutes.organizerDashboard),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.dashboard,
+                            color: AppColors.primary,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                user.role == UserRole.admin 
+                                    ? 'Admin Dashboard' 
+                                    : 'Dashboard организатора',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                user.role == UserRole.admin
+                                    ? 'Управление системой, пользователями'
+                                    : 'Статистика игр, управление командами',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          color: AppColors.textSecondary,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: AppSizes.largeSpace),
+            ],
+
             // Секция друзей
             FutureBuilder<List<UserModel>>(
               future: _loadFriends(),
@@ -670,8 +863,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
         onTap: () {
-          // Навигация к профилю друга
-          context.push('/player/${friend.id}?playerName=${Uri.encodeComponent(friend.name)}');
+          PlayerProfileDialog.show(context, ref, friend.id, playerName: friend.name);
         },
         child: Row(
           children: [
@@ -787,9 +979,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       padding: const EdgeInsets.only(bottom: 8),
                       child: GestureDetector(
                         onTap: () {
-                          // Закрываем диалог и переходим к профилю друга
-                          Navigator.of(context).pop();
-                          context.push('/player/${friend.id}?playerName=${Uri.encodeComponent(friend.name)}');
+                          PlayerProfileDialog.show(context, ref, friend.id, playerName: friend.name);
                         },
                         child: Row(
                           children: [
@@ -961,6 +1151,52 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       return;
     }
 
-    context.push('/team-members/${user.teamId}?teamName=${Uri.encodeComponent(user.teamName!)}');
+    // Проверяем роль пользователя
+    if (user.role == UserRole.organizer || user.role == UserRole.admin) {
+      // Организаторы и админы идут на управление командой
+      context.push('/team-members/${user.teamId}?teamName=${Uri.encodeComponent(user.teamName!)}');
+    } else {
+      // Обычные пользователи идут на просмотр команды
+      context.push('/team-view/${user.teamId}?teamName=${Uri.encodeComponent(user.teamName!)}');
+    }
+  }
+
+  Future<int> _getIncomingRequestsCount() async {
+    try {
+      final user = ref.read(currentUserProvider).value;
+      if (user == null) return 0;
+
+      final userService = ref.read(userServiceProvider);
+      return await userService.getIncomingRequestsCount(user.id);
+    } catch (e) {
+      debugPrint('Ошибка загрузки количества входящих запросов: $e');
+      return 0;
+    }
+  }
+
+  Future<int> _getIncomingTeamInvitationsCount() async {
+    try {
+      final user = ref.read(currentUserProvider).value;
+      if (user == null) return 0;
+
+      final teamService = ref.read(teamServiceProvider);
+      return await teamService.getIncomingTeamInvitationsCount(user.id);
+    } catch (e) {
+      debugPrint('Ошибка загрузки количества входящих приглашений в команды: $e');
+      return 0;
+    }
+  }
+
+  Future<int> _getIncomingTeamApplicationsCount() async {
+    try {
+      final user = ref.read(currentUserProvider).value;
+      if (user == null) return 0;
+
+      final teamService = ref.read(teamServiceProvider);
+      return await teamService.getIncomingTeamApplicationsCount(user.id);
+    } catch (e) {
+      debugPrint('Ошибка загрузки количества входящих заявок в команды: $e');
+      return 0;
+    }
   }
 }

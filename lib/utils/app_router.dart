@@ -13,7 +13,12 @@ import '../screens/team_screen.dart';
 import '../screens/team_selection_screen.dart';
 import '../screens/search_games_screen.dart';
 import '../screens/team_members_screen.dart';
+import '../screens/team_view_screen.dart';
 import '../screens/player_profile_screen.dart';
+import '../screens/organizer_dashboard_screen.dart';
+import '../screens/friend_requests_screen.dart';
+import '../screens/team_invitations_screen.dart';
+import '../screens/team_applications_screen.dart';
 import '../services/auth_service.dart';
 import 'constants.dart';
 
@@ -136,7 +141,7 @@ class AppRouter {
         },
       ),
 
-      // Участники команды
+      // Участники команды (управление для организаторов)
       GoRoute(
         path: '/team-members/:teamId',
         name: 'team-members',
@@ -144,6 +149,17 @@ class AppRouter {
           final teamId = state.pathParameters['teamId']!;
           final teamName = state.uri.queryParameters['teamName'] ?? 'Команда';
           return TeamMembersScreen(teamId: teamId, teamName: teamName);
+        },
+      ),
+
+      // Просмотр команды (для обычных пользователей)
+      GoRoute(
+        path: '/team-view/:teamId',
+        name: 'team-view',
+        builder: (context, state) {
+          final teamId = state.pathParameters['teamId']!;
+          final teamName = state.uri.queryParameters['teamName'] ?? 'Команда';
+          return TeamViewScreen(teamId: teamId, teamName: teamName);
         },
       ),
 
@@ -156,6 +172,34 @@ class AppRouter {
           final playerName = state.uri.queryParameters['playerName'];
           return PlayerProfileScreen(playerId: playerId, playerName: playerName);
         },
+      ),
+
+      // Dashboard организатора
+      GoRoute(
+        path: AppRoutes.organizerDashboard,
+        name: 'organizer-dashboard',
+        builder: (context, state) => const OrganizerDashboardScreen(),
+      ),
+
+      // Запросы дружбы
+      GoRoute(
+        path: '/friend-requests',
+        name: 'friend-requests',
+        builder: (context, state) => const FriendRequestsScreen(),
+      ),
+
+      // Приглашения в команды
+      GoRoute(
+        path: '/team-invitations',
+        name: 'team-invitations',
+        builder: (context, state) => const TeamInvitationsScreen(),
+      ),
+
+      // Заявки в команды
+      GoRoute(
+        path: '/team-applications',
+        name: 'team-applications',
+        builder: (context, state) => const TeamApplicationsScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

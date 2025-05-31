@@ -23,7 +23,7 @@ class TeamMembersScreen extends ConsumerStatefulWidget {
 class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
   UserTeamModel? _team;
   List<UserModel> _teamMembers = [];
-  List<String> _friendsList = [];
+  List<UserModel> _friends = [];
   bool _isLoading = true;
   String? _error;
 
@@ -62,88 +62,54 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
         return;
       }
 
-      // Получаем участников команды
-      final members = await userService.getUsersByIds(teamDoc.members);
+      _team = teamDoc;
+
+      // Загружаем участников команды
+      final membersFutures = _team!.members
+          .map((memberId) => userService.getUserById(memberId))
+          .toList();
       
-      // Получаем список друзей текущего пользователя
-      final friends = await userService.getFriends(currentUser.id);
-      final friendsIds = friends.map((f) => f.id).toList();
+      final membersResults = await Future.wait(membersFutures);
+      _teamMembers = membersResults
+          .where((member) => member != null)
+          .cast<UserModel>()
+          .toList();
 
-      if (mounted) {
-        setState(() {
-          _team = teamDoc;
-          _teamMembers = members;
-          _friendsList = friendsIds;
-          _isLoading = false;
-        });
+      // Загружаем друзей текущего пользователя (только если он владелец команды)
+      if (_team!.ownerId == currentUser.id) {
+        _friends = await userService.getFriends(currentUser.id);
       }
+
+      setState(() {
+        _isLoading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Ошибка загрузки: ${e.toString()}';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _toggleFriend(UserModel member) async {
-    try {
-      final currentUser = ref.read(currentUserProvider).value;
-      if (currentUser == null) return;
-
-      final userService = ref.read(userServiceProvider);
-      final isFriend = _friendsList.contains(member.id);
-
-      if (isFriend) {
-        await userService.removeFriend(currentUser.id, member.id);
-        setState(() {
-          _friendsList.remove(member.id);
-        });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${member.name} удален из друзей'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        }
-      } else {
-        await userService.addFriend(currentUser.id, member.id);
-        setState(() {
-          _friendsList.add(member.id);
-        });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${member.name} добавлен в друзья'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
+      setState(() {
+        _error = 'Ошибка загрузки данных: ${e.toString()}';
+        _isLoading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = ref.read(currentUserProvider).value;
+    final isOwner = currentUser?.id == _team?.ownerId;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(widget.teamName),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          if (isOwner && _team != null && !_team!.isFull)
+            IconButton(
+              icon: const Icon(Icons.person_add),
+              onPressed: _showInviteFriendDialog,
+              tooltip: 'Пригласить друга',
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -213,6 +179,17 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                                   color: AppColors.textSecondary,
                                 ),
                               ),
+                              if (_team != null && !_team!.isFull) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Свободных мест: ${_team!.availableSlots}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.success,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -225,14 +202,28 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text(
-                                'Участники команды',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  const Text(
+                                    'Участники команды',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (isOwner && _team != null && !_team!.isFull)
+                                    TextButton.icon(
+                                      onPressed: _showInviteFriendDialog,
+                                      icon: const Icon(Icons.person_add, size: 16),
+                                      label: const Text('Пригласить'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: AppColors.primary,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                             ListView.separated(
@@ -241,23 +232,47 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                               itemCount: _teamMembers.length,
                               separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (context, index) {
-                                return _buildMemberTile(_teamMembers[index]);
+                                return _buildMemberTile(_teamMembers[index], isOwner);
                               },
                             ),
                           ],
                         ),
                       ),
+
+                      // Пустые слоты
+                      if (_team != null && !_team!.isFull) ...[
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text(
+                                  'Свободные места',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              ...List.generate(_team!.availableSlots, (index) => 
+                                _buildEmptySlot(index, isOwner)
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
     );
   }
 
-  Widget _buildMemberTile(UserModel member) {
+  Widget _buildMemberTile(UserModel member, bool isOwner) {
     final currentUser = ref.read(currentUserProvider).value;
     final isSelf = currentUser?.id == member.id;
-    final isFriend = _friendsList.contains(member.id);
-    final isOwner = _team?.ownerId == member.id;
+    final isTeamOwner = _team?.ownerId == member.id;
 
     return ListTile(
       onTap: () {
@@ -289,7 +304,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
               ),
             ),
           ),
-          if (isOwner) ...[
+          if (isTeamOwner) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
@@ -312,14 +327,13 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Игр: ${member.gamesPlayed} • Побед: ${member.wins} • Винрейт: ${member.winRate.toStringAsFixed(0)}%',
+            'Рейтинг: ${member.rating.toStringAsFixed(1)} • ${member.gamesPlayed} игр',
             style: const TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
             ),
           ),
-          if (member.bio.isNotEmpty) ...[
-            const SizedBox(height: 2),
+          if (member.bio.isNotEmpty)
             Text(
               member.bio,
               style: const TextStyle(
@@ -330,33 +344,344 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-          ],
         ],
       ),
-      trailing: isSelf
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'Это вы',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w500,
+      trailing: isOwner && !isTeamOwner
+          ? PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'remove') {
+                  _removeMember(member);
+                } else if (value == 'replace') {
+                  _showReplaceMemberDialog(member);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'replace',
+                  child: Row(
+                    children: [
+                      Icon(Icons.swap_horiz, size: 16),
+                      SizedBox(width: 8),
+                      Text('Заменить'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'remove',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_remove, size: 16, color: AppColors.error),
+                      SizedBox(width: 8),
+                      Text('Удалить', style: TextStyle(color: AppColors.error)),
+                    ],
+                  ),
+                ),
+              ],
+              child: const Icon(Icons.more_vert, size: 20),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildEmptySlot(int index, bool isOwner) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Colors.grey.shade300,
+        child: Icon(
+          Icons.person_add_outlined,
+          color: Colors.grey.shade600,
+        ),
+      ),
+      title: Text(
+        'Свободное место ${index + 1}',
+        style: TextStyle(
+          color: Colors.grey.shade600,
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+      subtitle: Text(
+        isOwner ? 'Нажмите "Пригласить" чтобы добавить игрока' : 'Ожидает приглашения',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade500,
+        ),
+      ),
+      trailing: isOwner
+          ? IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              color: AppColors.primary,
+              onPressed: _showInviteFriendDialog,
+            )
+          : null,
+    );
+  }
+
+  void _showInviteFriendDialog() {
+    if (_friends.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('У вас нет друзей для приглашения'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    // Фильтруем друзей, которые не в команде и не имеют другой команды
+    final availableFriends = _friends.where((friend) => 
+        !_team!.members.contains(friend.id) && friend.teamId == null
+    ).toList();
+
+    if (availableFriends.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Все ваши друзья уже в командах или в этой команде'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Пригласить друга'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: ListView.builder(
+            itemCount: availableFriends.length,
+            itemBuilder: (context, index) {
+              final friend = availableFriends[index];
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: friend.photoUrl != null
+                      ? NetworkImage(friend.photoUrl!)
+                      : null,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  child: friend.photoUrl == null
+                      ? Text(
+                          friend.name.isNotEmpty ? friend.name[0].toUpperCase() : '?',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        )
+                      : null,
+                ),
+                title: Text(friend.name),
+                subtitle: Text(
+                  'Рейтинг: ${friend.rating.toStringAsFixed(1)} • ${friend.gamesPlayed} игр',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _inviteFriend(friend);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReplaceMemberDialog(UserModel memberToReplace) {
+    // Фильтруем друзей, которые не в команде и не имеют другой команды
+    final availableFriends = _friends.where((friend) => 
+        !_team!.members.contains(friend.id) && friend.teamId == null
+    ).toList();
+
+    if (availableFriends.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Нет доступных друзей для замены'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Заменить ${memberToReplace.name}'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: AppColors.warning, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${memberToReplace.name} будет исключен из команды',
+                        style: TextStyle(
+                          color: AppColors.warning,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            )
-          : IconButton(
-              icon: Icon(
-                isFriend ? Icons.person_remove : Icons.person_add,
-                color: isFriend ? AppColors.error : AppColors.success,
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: availableFriends.length,
+                  itemBuilder: (context, index) {
+                    final friend = availableFriends[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: friend.photoUrl != null
+                            ? NetworkImage(friend.photoUrl!)
+                            : null,
+                        backgroundColor: AppColors.primary.withOpacity(0.1),
+                        child: friend.photoUrl == null
+                            ? Text(
+                                friend.name.isNotEmpty ? friend.name[0].toUpperCase() : '?',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                                ),
+                              )
+                            : null,
+                      ),
+                      title: Text(friend.name),
+                      subtitle: Text(
+                        'Рейтинг: ${friend.rating.toStringAsFixed(1)} • ${friend.gamesPlayed} игр',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _inviteFriend(friend, replacedMember: memberToReplace);
+                      },
+                    );
+                  },
+                ),
               ),
-              onPressed: () => _toggleFriend(member),
-              tooltip: isFriend ? 'Удалить из друзей' : 'Добавить в друзья',
-            ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _inviteFriend(UserModel friend, {UserModel? replacedMember}) async {
+    try {
+      final teamService = ref.read(teamServiceProvider);
+      final currentUser = ref.read(currentUserProvider).value;
+      
+      if (currentUser == null || _team == null) return;
+
+      await teamService.sendTeamInvitation(
+        teamId: _team!.id,
+        fromUserId: currentUser.id,
+        toUserId: friend.id,
+        replacedUserId: replacedMember?.id,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              replacedMember != null
+                  ? 'Приглашение отправлено ${friend.name} для замены ${replacedMember.name}'
+                  : 'Приглашение отправлено ${friend.name}',
+            ),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeMember(UserModel member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить из команды'),
+        content: Text('Удалить ${member.name} из команды?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final teamService = ref.read(teamServiceProvider);
+        final currentUser = ref.read(currentUserProvider).value;
+        
+        if (currentUser == null || _team == null) return;
+
+        await teamService.removePlayerFromTeam(_team!.id, member.id, currentUser.id);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${member.name} удален из команды'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+
+          // Перезагружаем данные
+          await _loadTeamData();
+          
+          // Обновляем профиль пользователя
+          ref.invalidate(currentUserProvider);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка: ${e.toString()}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    }
   }
 } 

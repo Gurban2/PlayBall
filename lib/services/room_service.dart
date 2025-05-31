@@ -295,6 +295,23 @@ class RoomService {
         .toList();
   }
 
+  // Очистка завершенных игр организатора
+  Future<void> clearCompletedGames(String organizerId) async {
+    final snapshot = await _firestore
+        .collection(_collection)
+        .where('organizerId', isEqualTo: organizerId)
+        .where('status', whereIn: ['completed', 'cancelled'])
+        .get();
+    
+    final batch = _firestore.batch();
+    
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    
+    await batch.commit();
+  }
+
   // Получение количества активных комнат организатора
   Future<int> getOrganizerActiveRoomsCount(String organizerId) async {
     final snapshot = await _firestore

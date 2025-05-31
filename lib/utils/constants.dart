@@ -184,6 +184,9 @@ class FirestorePaths {
   static const String teamsCollection = 'teams';
   static const String userTeamsCollection = 'user_teams';
   static const String notificationsCollection = 'notifications';
+  static const String friendRequestsCollection = 'friend_requests';
+  static const String teamInvitationsCollection = 'team_invitations';
+  static const String teamApplicationsCollection = 'team_applications';
 }
 
 // Размеры элементов интерфейса
