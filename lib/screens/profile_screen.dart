@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/providers.dart';
-import '../services/firestore_service.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
 import 'my_team_screen.dart';
@@ -15,27 +14,37 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> 
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _bioController = TextEditingController();
   bool _isEditingBio = false;
   List<GameRef> _upcomingGames = [];
   bool _isLoadingGames = false;
-  
-  late TabController _tabController;
+
+  TabController? _tabController;
+  UserRole? _lastUserRole;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadUpcomingGames();
   }
 
   @override
   void dispose() {
     _bioController.dispose();
-    _tabController.dispose();
+    _tabController?.dispose();
     super.dispose();
+  }
+
+  void _updateTabController(UserRole? userRole) {
+    final tabCount = (userRole == UserRole.organizer) ? 2 : 1;
+    
+    if (_tabController == null || _lastUserRole != userRole) {
+      _tabController?.dispose();
+      _tabController = TabController(length: tabCount, vsync: this);
+      _lastUserRole = userRole;
+    }
   }
 
   Future<void> _loadUpcomingGames() async {
@@ -46,10 +55,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     try {
       final user = ref.read(currentUserProvider).value;
       if (user != null) {
-        final firestoreService = ref.read(firestoreServiceProvider);
-        final games = await firestoreService.getUpcomingGamesForUser(user.id);
+        // Пока оставляем пустой список, метод getUpcomingGamesForUser можно реализовать позже
         setState(() {
-          _upcomingGames = games;
+          _upcomingGames = [];
         });
       }
     } catch (e) {
@@ -65,35 +73,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _logout(context, ref),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          tabs: const [
-            Tab(
-              icon: Icon(Icons.person, size: 24),
-            ),
-            Tab(
-              icon: Icon(Icons.groups, size: 24),
-            ),
-          ],
-        ),
+    return userAsync.when(
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       ),
-      body: userAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
+      error: (error, stack) => Scaffold(
+        body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -108,18 +93,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ],
           ),
         ),
-        data: (user) => user == null
-            ? const Center(child: Text('Пользователь не найден'))
-            : TabBarView(
-                controller: _tabController,
-                children: [
-                  // Вкладка профиля
-                  _buildProfileTab(user),
-                  // Вкладка команды
-                  const MyTeamScreen(),
-                ],
-              ),
       ),
+      data: (user) {
+        if (user == null) {
+          return const Scaffold(
+            body: Center(child: Text('Пользователь не найден')),
+          );
+        }
+
+        // Обновляем TabController для текущего пользователя
+        _updateTabController(user.role);
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            toolbarHeight: 42.0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.logout),
+                iconSize: 24.0,
+                onPressed: () => _logout(context, ref),
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController!,
+              indicatorColor: Colors.white,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorWeight: 3.0,
+              tabs: [
+                const Tab(
+                  height: 48.0,
+                  icon: Icon(Icons.person, size: 24),
+                ),
+                if (user.role == UserRole.organizer)
+                  const Tab(
+                    height: 48.0,
+                    icon: Icon(Icons.groups, size: 24),
+                  ),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            controller: _tabController!,
+            children: [
+              // Вкладка профиля
+              _buildProfileTab(user),
+              // Вкладка команды - только для организаторов
+              if (user.role == UserRole.organizer)
+                const MyTeamScreen(),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -146,7 +174,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                       children: [
                         CircleAvatar(
                           radius: 40,
-                          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                          backgroundColor:
+                              AppColors.primary.withValues(alpha: 0.1),
                           backgroundImage: user.photoUrl != null
                               ? NetworkImage(user.photoUrl!)
                               : null,
@@ -174,8 +203,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                 ),
                               ),
                               Text(
-                                user.email.length > 20 
-                                    ? '${user.email.substring(0, 20)}...' 
+                                user.email.length > 20
+                                    ? '${user.email.substring(0, 20)}...'
                                     : user.email,
                                 style: const TextStyle(
                                   color: AppColors.textSecondary,
@@ -204,60 +233,72 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                               // Информация о команде
                               if (user.teamName != null) ...[
                                 const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.secondary.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: AppColors.secondary.withValues(alpha: 0.3),
+                                GestureDetector(
+                                  onTap: () => _navigateToTeamMembers(user),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
                                     ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.groups,
-                                        color: AppColors.secondary,
-                                        size: 14,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.secondary
+                                          .withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: AppColors.secondary
+                                            .withValues(alpha: 0.3),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Flexible(
-                                        child: Text(
-                                          user.teamName!,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.secondary,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.groups,
+                                          color: AppColors.secondary,
+                                          size: 14,
                                         ),
-                                      ),
-                                      if (user.isTeamCaptain) ...[
                                         const SizedBox(width: 4),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.warning,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: const Text(
-                                            'К',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 8,
+                                        Flexible(
+                                          child: Text(
+                                            user.teamName!,
+                                            style: const TextStyle(
+                                              fontSize: 11,
                                               fontWeight: FontWeight.bold,
+                                              color: AppColors.secondary,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (user.isTeamCaptain) ...[
+                                          const SizedBox(width: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.warning,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: const Text(
+                                              'К',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 8,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
+                                        ],
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          Icons.arrow_forward_ios,
+                                          color: AppColors.secondary,
+                                          size: 10,
                                         ),
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -266,9 +307,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         ),
                       ],
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // Описание игрока
                     Container(
                       width: double.infinity,
@@ -292,11 +333,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                     style: const TextStyle(fontSize: 14),
                                   )
                                 : Text(
-                                    user.bio.isEmpty ? 'Расскажите о себе...' : user.bio,
+                                    user.bio.isEmpty
+                                        ? 'Расскажите о себе...'
+                                        : user.bio,
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: user.bio.isEmpty 
-                                          ? AppColors.textSecondary 
+                                      color: user.bio.isEmpty
+                                          ? AppColors.textSecondary
                                           : AppColors.text,
                                     ),
                                   ),
@@ -311,38 +354,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         ],
                       ),
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // Основная статистика в компактном виде
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildCompactStat(
-                          user.gamesPlayed.toString(),
-                          'Игр',
-                          Icons.sports_volleyball,
+                        Flexible(
+                          child: _buildCompactStat(
+                            user.gamesPlayed.toString(),
+                            'Игр',
+                            Icons.sports_volleyball,
+                          ),
                         ),
-                        _buildCompactStat(
-                          user.wins.toString(),
-                          'Побед',
-                          Icons.emoji_events,
+                        Flexible(
+                          child: _buildCompactStat(
+                            user.wins.toString(),
+                            'Побед',
+                            Icons.emoji_events,
+                          ),
                         ),
-                        _buildCompactStat(
-                          user.losses.toString(),
-                          'Поражений',
-                          Icons.close,
+                        Flexible(
+                          child: _buildCompactStat(
+                            user.losses.toString(),
+                            'Поражений',
+                            Icons.close,
+                          ),
                         ),
-                        _buildCompactStat(
-                          '${user.winRate.toStringAsFixed(0)}%',
-                          'Винрейт',
-                          Icons.trending_up,
+                        Flexible(
+                          child: _buildCompactStat(
+                            '${user.winRate.toStringAsFixed(0)}%',
+                            'Винрейт',
+                            Icons.trending_up,
+                          ),
                         ),
                       ],
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // Рейтинг и баллы
                     Row(
                       children: [
@@ -393,86 +444,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         ),
                       ],
                     ),
-                    
-                    // Информация о команде
-                    if (user.teamName != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.secondary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: AppColors.secondary.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.groups,
-                              color: AppColors.secondary,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        user.teamName!,
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.secondary,
-                                        ),
-                                      ),
-                                      if (user.isTeamCaptain) ...[
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.warning,
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text(
-                                            'Капитан',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 8,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const Text(
-                                    'Постоянная команда',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
             ),
-            
+
             const SizedBox(height: AppSizes.largeSpace),
-            
+
             // Секция друзей
             FutureBuilder<List<UserModel>>(
               future: _loadFriends(),
@@ -485,17 +463,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                     ),
                   );
                 }
-                
+
                 if (snapshot.hasError) {
                   return const SizedBox.shrink();
                 }
-                
+
                 final friends = snapshot.data ?? [];
-                
+
                 if (friends.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                
+
                 return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -513,7 +491,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                           ],
                         ),
                         const SizedBox(height: 12),
-                        ...friends.take(5).map((friend) => _buildFriendItem(friend)),
+                        ...friends
+                            .take(5)
+                            .map((friend) => _buildFriendItem(friend)),
                         if (friends.length > 5) ...[
                           const SizedBox(height: 8),
                           Center(
@@ -543,7 +523,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 );
               },
             ),
-            
+
             const SizedBox(height: AppSizes.largeSpace),
           ],
         ),
@@ -593,16 +573,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     }
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.id)
-          .update({
+      await FirebaseFirestore.instance.collection('users').doc(user.id).update({
         'bio': _bioController.text.trim(),
         'updatedAt': Timestamp.now(),
       });
 
       ref.invalidate(currentUserProvider);
-      
+
       setState(() {
         _isEditingBio = false;
       });
@@ -636,21 +613,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   Widget _buildCompactStat(String value, String label, IconData icon) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 20, color: AppColors.primary),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            color: AppColors.textSecondary,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
           ),
         ),
       ],
@@ -671,9 +656,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     try {
       final user = ref.read(currentUserProvider).value;
       if (user == null) return [];
-      
-      final firestoreService = ref.read(firestoreServiceProvider);
-      return await firestoreService.getFriends(user.id);
+
+      final userService = ref.read(userServiceProvider);
+      return await userService.getFriends(user.id);
     } catch (e) {
       debugPrint('Ошибка загрузки друзей: $e');
       return [];
@@ -683,64 +668,69 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   Widget _buildFriendItem(UserModel friend) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundImage: friend.photoUrl != null 
-                ? NetworkImage(friend.photoUrl!) 
-                : null,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-            child: friend.photoUrl == null 
-                ? Text(
-                    _getInitials(friend.name),
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  friend.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                if (friend.teamName != null)
+      child: GestureDetector(
+        onTap: () {
+          // Навигация к профилю друга
+          context.push('/player/${friend.id}?playerName=${Uri.encodeComponent(friend.name)}');
+        },
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundImage:
+                  friend.photoUrl != null ? NetworkImage(friend.photoUrl!) : null,
+              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+              child: friend.photoUrl == null
+                  ? Text(
+                      _getInitials(friend.name),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    friend.teamName!,
+                    friend.name,
                     style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${friend.gamesPlayed}',
-              style: const TextStyle(
-                fontSize: 10,
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
+                  if (friend.teamName != null)
+                    Text(
+                      friend.teamName!,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                ],
               ),
             ),
-          ),
-        ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${friend.gamesPlayed}',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -795,92 +785,100 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                     final friend = friends[index];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundImage: friend.photoUrl != null 
-                                ? NetworkImage(friend.photoUrl!) 
-                                : null,
-                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                            child: friend.photoUrl == null 
-                                ? Text(
-                                    _getInitials(friend.name),
-                                    style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  friend.name,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    if (friend.teamName != null) ...[
-                                      Icon(
-                                        Icons.groups,
-                                        size: 12,
-                                        color: AppColors.secondary,
+                      child: GestureDetector(
+                        onTap: () {
+                          // Закрываем диалог и переходим к профилю друга
+                          Navigator.of(context).pop();
+                          context.push('/player/${friend.id}?playerName=${Uri.encodeComponent(friend.name)}');
+                        },
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundImage: friend.photoUrl != null
+                                  ? NetworkImage(friend.photoUrl!)
+                                  : null,
+                              backgroundColor:
+                                  AppColors.primary.withValues(alpha: 0.1),
+                              child: friend.photoUrl == null
+                                  ? Text(
+                                      _getInitials(friend.name),
+                                      style: const TextStyle(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        friend.teamName!,
-                                        style: const TextStyle(
-                                          fontSize: 11,
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    friend.name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      if (friend.teamName != null) ...[
+                                        Icon(
+                                          Icons.groups,
+                                          size: 12,
                                           color: AppColors.secondary,
                                         ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          friend.teamName!,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.secondary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      Text(
+                                        '${friend.gamesPlayed} игр',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary,
+                                        ),
                                       ),
-                                      const SizedBox(width: 8),
                                     ],
-                                    Text(
-                                      '${friend.gamesPlayed} игр',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'remove') {
+                                  _removeFriend(friend);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'remove',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.person_remove, size: 16),
+                                      SizedBox(width: 8),
+                                      Text('Удалить из друзей'),
+                                    ],
+                                  ),
                                 ),
                               ],
-                            ),
-                          ),
-                          PopupMenuButton<String>(
-                            onSelected: (value) {
-                              if (value == 'remove') {
-                                _removeFriend(friend);
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'remove',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.person_remove, size: 16),
-                                    SizedBox(width: 8),
-                                    Text('Удалить из друзей'),
-                                  ],
-                                ),
+                              child: const Icon(
+                                Icons.more_vert,
+                                size: 16,
+                                color: AppColors.textSecondary,
                               ),
-                            ],
-                            child: const Icon(
-                              Icons.more_vert,
-                              size: 16,
-                              color: AppColors.textSecondary,
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -924,8 +922,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         final user = ref.read(currentUserProvider).value;
         if (user == null) return;
 
-        final firestoreService = ref.read(firestoreServiceProvider);
-        await firestoreService.removeFriend(user.id, friend.id);
+        final userService = ref.read(userServiceProvider);
+        await userService.removeFriend(user.id, friend.id);
 
         if (mounted) {
           Navigator.of(context).pop(); // Закрываем диалог друзей
@@ -935,7 +933,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               backgroundColor: AppColors.success,
             ),
           );
-          
+
           // Обновляем профиль
           setState(() {});
         }
@@ -951,4 +949,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       }
     }
   }
-} 
+
+  void _navigateToTeamMembers(UserModel user) async {
+    if (user.teamId == null || user.teamName == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Информация о команде недоступна'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    context.push('/team-members/${user.teamId}?teamName=${Uri.encodeComponent(user.teamName!)}');
+  }
+}

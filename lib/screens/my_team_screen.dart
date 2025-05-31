@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/user_team_model.dart';
 import '../models/user_model.dart';
 import '../providers/providers.dart';
@@ -35,6 +36,91 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     super.dispose();
   }
 
+  // Функция для обработки ошибок Firebase с кликабельными ссылками
+  void _showFirebaseError(String error) {
+    // Проверяем, содержит ли ошибка ссылку на создание индекса
+    if (error.contains('https://console.firebase.google.com')) {
+      final urlMatch = RegExp(r'https://console\.firebase\.google\.com[^\s]+').firstMatch(error);
+      final url = urlMatch?.group(0);
+      
+      if (url != null) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Требуется создать индекс Firestore'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Для корректной работы приложения необходимо создать индекс в Firebase Firestore.',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Нажмите кнопку ниже, чтобы открыть Firebase Console и создать индекс:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    error,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Закрыть'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  try {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Не удалось открыть ссылку: $e'),
+                          backgroundColor: AppColors.error,
+                        ),
+                      );
+                    }
+                  }
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Открыть Firebase Console'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+    
+    // Для обычных ошибок показываем стандартный SnackBar
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ошибка загрузки: $error')),
+    );
+  }
+
   Future<void> _loadUserTeam() async {
     setState(() {
       _isLoading = true;
@@ -43,10 +129,10 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     try {
       final user = ref.read(currentUserProvider).value;
       if (user != null) {
-        final firestoreService = ref.read(firestoreServiceProvider);
+        final teamService = ref.read(teamServiceProvider);
         
         // Загружаем команду пользователя
-        final team = await firestoreService.getUserTeam(user.id);
+        final team = await teamService.getUserTeam(user.id);
         
         if (team != null) {
           setState(() {
@@ -64,9 +150,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     } catch (e) {
       debugPrint('Ошибка загрузки команды: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки команды: $e')),
-        );
+        _showFirebaseError(e.toString());
       }
     } finally {
       setState(() {
@@ -79,8 +163,8 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     if (_userTeam == null) return;
 
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
-      final members = await firestoreService.getUsersByIds(_userTeam!.members);
+      final userService = ref.read(userServiceProvider);
+      final members = await userService.getUsersByIds(_userTeam!.members);
       setState(() {
         _teamMembers = members;
       });
@@ -93,8 +177,8 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     try {
       final user = ref.read(currentUserProvider).value;
       if (user != null) {
-        final firestoreService = ref.read(firestoreServiceProvider);
-        final allFriends = await firestoreService.getUserFriends(user.id);
+        final userService = ref.read(userServiceProvider);
+        final allFriends = await userService.getFriends(user.id);
         
         // НОВОЕ: Фильтруем только тех друзей, которые не состоят в командах
         final availableFriends = allFriends.where((friend) => friend.teamId == null).toList();
@@ -135,7 +219,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     });
 
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
+      final teamService = ref.read(teamServiceProvider);
       
       final newTeam = UserTeamModel(
         id: '', // Будет сгенерирован в Firestore
@@ -145,7 +229,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
         createdAt: DateTime.now(),
       );
 
-      await firestoreService.createUserTeam(newTeam);
+      await teamService.createUserTeam(newTeam);
       await _loadUserTeam(); // Перезагружаем данные
       
       if (mounted) {
@@ -182,10 +266,10 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     }
 
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
+      final teamService = ref.read(teamServiceProvider);
       final updatedMembers = [..._userTeam!.members, friend.id];
       
-      await firestoreService.updateUserTeam(
+      await teamService.updateUserTeam(
         _userTeam!.id,
         {'members': updatedMembers},
       );
@@ -235,10 +319,10 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
 
     if (confirmed == true) {
       try {
-        final firestoreService = ref.read(firestoreServiceProvider);
+        final teamService = ref.read(teamServiceProvider);
         final updatedMembers = _userTeam!.members.where((id) => id != member.id).toList();
         
-        await firestoreService.updateUserTeam(
+        await teamService.updateUserTeam(
           _userTeam!.id,
           {'members': updatedMembers},
         );
@@ -286,8 +370,8 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
           imageBytes,
         );
 
-        final firestoreService = ref.read(firestoreServiceProvider);
-        await firestoreService.updateUserTeam(
+        final teamService = ref.read(teamServiceProvider);
+        await teamService.updateUserTeam(
           _userTeam!.id,
           {'photoUrl': photoUrl},
         );

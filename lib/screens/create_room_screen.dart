@@ -53,8 +53,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     final user = userAsync.value;
     
     if (user != null) {
-      final firestoreService = ref.read(firestoreServiceProvider);
-      final count = await firestoreService.getOrganizerActiveRoomsCount(user.id);
+      final teamService = ref.read(teamServiceProvider);
+      final count = await ref.read(roomServiceProvider).getOrganizerActiveRoomsCount(user.id);
       if (mounted) {
         setState(() {
           _activeRoomsCount = count;
@@ -71,9 +71,9 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     print('👤 Пользователь: ${user?.name} (ID: ${user?.id})');
     
     if (user != null) {
-      final firestoreService = ref.read(firestoreServiceProvider);
+      final teamService = ref.read(teamServiceProvider);
       try {
-        final teamInfo = await firestoreService.getUserTeamInfo(user.id);
+        final teamInfo = await teamService.getUserTeamInfo(user.id);
         print('📊 Данные команды получены: $teamInfo');
         
         if (mounted) {
@@ -219,12 +219,26 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       return;
     }
 
-    // Проверяем наличие команды у организатора для командного режима
+    // Проверяем наличие и размер команды у организатора для командного режима
     if (_selectedGameMode == GameMode.team_friendly) {
-      if (_userTeamName == null || _userTeamName!.isEmpty) {
+      final teamService = ref.read(teamServiceProvider);
+      final userTeam = await teamService.getUserTeam(user.id);
+      
+      if (userTeam == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Для создания командной игры у вас должна быть своя команда. Создайте команду в разделе "Моя команда" в профиле.'),
+            backgroundColor: AppColors.error,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        return;
+      }
+      
+      if (userTeam.members.length < 6) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Для командной игры команда должна состоять из 6 игроков. В вашей команде: ${userTeam.members.length}/6'),
             backgroundColor: AppColors.error,
             duration: Duration(seconds: 5),
           ),
@@ -248,10 +262,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     });
 
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
+      final teamService = ref.read(teamServiceProvider);
       
       // Сначала создаем комнату без фото, чтобы получить roomId
-      final roomId = await firestoreService.createRoom(
+      final roomId = await ref.read(roomServiceProvider).createRoom(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         location: _selectedLocation ?? '',
@@ -292,7 +306,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           final photoUrl = await storageService.uploadRoomImage(_selectedImageBytes!, roomId);
           
           // Обновляем комнату с URL фотографии
-          await firestoreService.updateRoom(roomId: roomId, photoUrl: photoUrl);
+          await teamService.updateRoom(roomId: roomId, photoUrl: photoUrl);
         } catch (e) {
           // Если загрузка фото не удалась, показываем предупреждение, но комната уже создана
           if (mounted) {

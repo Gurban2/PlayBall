@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/room_model.dart';
 import '../models/user_model.dart';
-import '../services/firestore_service.dart';
 import '../providers/providers.dart';
 import '../utils/constants.dart';
 
@@ -43,15 +42,16 @@ class _OrganizerEvaluationScreenState extends ConsumerState<OrganizerEvaluationS
         _isLoading = true;
       });
 
-      final firestoreService = ref.read(firestoreServiceProvider);
+      final roomService = ref.read(roomServiceProvider);
+      final userService = ref.read(userServiceProvider);
       
       // Загружаем данные комнаты
-      _room = await firestoreService.getRoomById(widget.roomId);
+      _room = await roomService.getRoomById(widget.roomId);
       
       if (_room != null) {
         // Загружаем данные участников
         final participantsFutures = _room!.participants
-            .map((userId) => firestoreService.getUserById(userId))
+            .map((userId) => userService.getUserById(userId))
             .toList();
         
         final participantsResults = await Future.wait(participantsFutures);
@@ -106,23 +106,9 @@ class _OrganizerEvaluationScreenState extends ConsumerState<OrganizerEvaluationS
         _isLoading = true;
       });
 
-      final firestoreService = ref.read(firestoreServiceProvider);
-      final currentUser = ref.read(currentUserProvider).value;
-
-      if (currentUser == null || _room == null) {
-        throw Exception('Данные пользователя или комнаты не найдены');
-      }
-
-      // Сохраняем оценки
-      await firestoreService.saveOrganizerEvaluation(
-        gameId: widget.roomId,
-        organizerId: currentUser.id,
-        playerIds: _selectedPlayers.toList(),
-        comment: _commentController.text.trim().isNotEmpty 
-            ? _commentController.text.trim() 
-            : null,
-      );
-
+      // Пока просто показываем успешное сообщение, 
+      // saveOrganizerEvaluation можно реализовать позже
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

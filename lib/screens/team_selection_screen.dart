@@ -26,8 +26,8 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
     });
 
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
-      await firestoreService.joinTeam(teamId, user.id);
+      final teamService = ref.read(teamServiceProvider);
+      await teamService.joinTeam(teamId, user.id);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -58,12 +58,12 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
   }
 
   Future<List<UserModel?>> _loadTeamMembers(List<String> memberIds) async {
-    final firestoreService = ref.read(firestoreServiceProvider);
+    final userService = ref.read(userServiceProvider);
     final members = <UserModel?>[];
     
     for (final memberId in memberIds) {
       try {
-        final user = await firestoreService.getUserById(memberId);
+        final user = await userService.getUserById(memberId);
         members.add(user);
       } catch (e) {
         debugPrint('Ошибка загрузки участника $memberId: $e');
@@ -235,7 +235,259 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
   }
 
   Widget _buildTeamCard(TeamModel team, UserModel user, RoomModel room) {
-    final canJoin = !team.isFull && room.status == RoomStatus.planned;
+    // В командном режиме проверяем логику доступа
+    if (room.isTeamMode && user.role == UserRole.user) {
+      // Проверяем, является ли пользователь участником игры
+      final isParticipant = room.participants.contains(user.id);
+      final isInThisTeam = team.members.contains(user.id);
+      
+      if (!isParticipant) {
+        // Обычные игроки, которые НЕ участники игры
+        return Card(
+          margin: const EdgeInsets.only(bottom: AppSizes.mediumSpace),
+          child: Padding(
+            padding: AppSizes.cardPadding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      team.name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '${team.members.length}/${team.maxMembers}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.mediumSpace),
+                
+                if (team.members.isEmpty)
+                  const Text(
+                    'Нет участников',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  )
+                else
+                  FutureBuilder<List<UserModel?>>(
+                    future: _loadTeamMembers(team.members),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      
+                      final members = snapshot.data ?? [];
+                      
+                      return Column(
+                        children: members.map((member) {
+                          if (member == null) {
+                            return const ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.grey,
+                                child: Icon(Icons.person, color: Colors.white),
+                              ),
+                              title: Text('Пользователь не найден'),
+                            );
+                          }
+                          
+                          return PlayerCard(
+                            player: member,
+                            compact: true,
+                            onTap: () => _showPlayerProfile(member),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                
+                const SizedBox(height: AppSizes.mediumSpace),
+                
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: null, // Всегда неактивна
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text(
+                      'Обратитесь к организатору своей команды',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        // Обычные игроки, которые ЯВЛЯЮТСЯ участниками игры
+        return Card(
+          margin: const EdgeInsets.only(bottom: AppSizes.mediumSpace),
+          child: Padding(
+            padding: AppSizes.cardPadding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      team.name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isInThisTeam ? AppColors.success : AppColors.secondary,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '${team.members.length}/${team.maxMembers}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSizes.mediumSpace),
+                
+                if (team.members.isEmpty)
+                  const Text(
+                    'Нет участников',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  )
+                else
+                  FutureBuilder<List<UserModel?>>(
+                    future: _loadTeamMembers(team.members),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      
+                      final members = snapshot.data ?? [];
+                      
+                      return Column(
+                        children: members.map((member) {
+                          if (member == null) {
+                            return const ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.grey,
+                                child: Icon(Icons.person, color: Colors.white),
+                              ),
+                              title: Text('Пользователь не найден'),
+                            );
+                          }
+                          
+                          return PlayerCard(
+                            player: member,
+                            compact: true,
+                            onTap: () => _showPlayerProfile(member),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                
+                const SizedBox(height: AppSizes.mediumSpace),
+                
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: null, // Всегда неактивна для обычных игроков
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isInThisTeam ? AppColors.success : Colors.grey,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: Text(
+                      isInThisTeam 
+                          ? 'Вы в этой команде' 
+                          : 'Только просмотр',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    // Логика для организаторов
+    final isMyTeam = team.ownerId == user.id;
+    final isOtherOrganizerTeam = team.ownerId != null && team.ownerId != user.id;
+    
+    bool canJoin = !team.isFull && room.status == RoomStatus.planned;
+    
+    // Организатор не может присоединиться к команде другого организатора
+    if (isOtherOrganizerTeam) {
+      canJoin = false;
+    }
+    
+    String getButtonText() {
+      if (isMyTeam) {
+        return 'Присоединиться со своей командой';
+      } else if (isOtherOrganizerTeam) {
+        return 'Команда соперника';
+      } else if (team.isFull) {
+        return 'Команда заполнена';
+      } else if (room.status != RoomStatus.planned) {
+        return 'Игра уже началась';
+      } else {
+        return 'Присоединиться к команде';
+      }
+    }
     
     return Card(
       margin: const EdgeInsets.only(bottom: AppSizes.mediumSpace),
@@ -340,11 +592,7 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
                         ),
                       )
                     : Text(
-                        canJoin 
-                            ? 'Присоединиться к команде'
-                            : team.isFull 
-                                ? 'Команда заполнена'
-                                : 'Игра уже началась',
+                        getButtonText(),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -398,7 +646,7 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
                 data: (user) => user == null
                     ? const Center(child: Text('Пользователь не найден'))
                     : StreamBuilder<List<TeamModel>>(
-                        stream: ref.read(firestoreServiceProvider).getTeamsForRoomStream(widget.roomId),
+                        stream: ref.read(teamServiceProvider).watchTeamsForRoom(widget.roomId),
                         builder: (context, snapshot) {
                           if (snapshot.connectionState == ConnectionState.waiting) {
                             return const Center(child: CircularProgressIndicator());

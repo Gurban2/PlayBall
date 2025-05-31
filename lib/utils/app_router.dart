@@ -12,8 +12,17 @@ import '../screens/room_screen.dart';
 import '../screens/team_screen.dart';
 import '../screens/team_selection_screen.dart';
 import '../screens/search_games_screen.dart';
+import '../screens/team_members_screen.dart';
+import '../screens/player_profile_screen.dart';
 import '../services/auth_service.dart';
 import 'constants.dart';
+
+// Простые утилиты навигации
+class Routes {
+  static String room(String id) => '/room/$id';
+  static String player(String id) => '/player/$id';
+  static String team(String roomId) => '/team/$roomId';
+}
 
 class AppRouter {
   static final AuthService _authService = AuthService();
@@ -124,6 +133,28 @@ class AppRouter {
         builder: (context, state) {
           final roomId = state.pathParameters['roomId']!;
           return TeamSelectionScreen(roomId: roomId);
+        },
+      ),
+
+      // Участники команды
+      GoRoute(
+        path: '/team-members/:teamId',
+        name: 'team-members',
+        builder: (context, state) {
+          final teamId = state.pathParameters['teamId']!;
+          final teamName = state.uri.queryParameters['teamName'] ?? 'Команда';
+          return TeamMembersScreen(teamId: teamId, teamName: teamName);
+        },
+      ),
+
+      // Профиль игрока
+      GoRoute(
+        path: '/player/:playerId',
+        name: 'player-profile',
+        builder: (context, state) {
+          final playerId = state.pathParameters['playerId']!;
+          final playerName = state.uri.queryParameters['playerName'];
+          return PlayerProfileScreen(playerId: playerId, playerName: playerName);
         },
       ),
     ],

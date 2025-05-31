@@ -22,8 +22,66 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   bool _isJoining = false;
 
   Future<void> _selectTeam() async {
-    // Переходим к экрану выбора команды
+    final user = ref.read(currentUserProvider).value;
+    final room = ref.read(roomProvider(widget.roomId)).value;
+    
+    // Проверяем авторизацию
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Необходимо войти в систему'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    
+    // Для командных игр и организаторов - вызываем специальную функцию
+    if (room != null && room.isTeamMode && user.role == UserRole.organizer) {
+      await _joinTeamGameAsOrganizer(user, room);
+      return;
+    }
+    
+    // Проверяем роль для командных игр
+    if (room != null && room.isTeamMode && user.role == UserRole.user) {
+      // Проверяем, является ли пользователь участником игры
+      final isParticipant = room.participants.contains(user.id);
+      
+      if (!isParticipant) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Вы можете участвовать в командных играх только через организатора вашей команды'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        return;
+      }
+    }
+    
+    // Переходим к экрану выбора команды (для обычного режима)
     context.push('/team-selection/${widget.roomId}');
+  }
+
+  Future<void> _joinTeamGameAsOrganizer(UserModel user, RoomModel room) async {
+    setState(() {
+      _isJoining = true;
+    });
+
+    try {
+      // Пока временная заглушка, метод можно реализовать позже
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Функция в разработке'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isJoining = false;
+        });
+      }
+    }
   }
 
   Future<void> _leaveTeam(String teamId, UserModel user) async {
@@ -32,8 +90,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     });
 
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
-      await firestoreService.leaveTeam(teamId, user.id);
+      final teamService = ref.read(teamServiceProvider);
+      await teamService.leaveTeam(teamId, user.id);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -43,7 +101,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
           ),
         );
         // Обновляем провайдер
-        ref.refresh(roomProvider(widget.roomId));
+        ref.invalidate(roomProvider(widget.roomId));
       }
     } catch (e) {
       if (mounted) {
@@ -65,8 +123,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
 
   Future<void> _updateRoomStatus(RoomStatus newStatus) async {
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
-      await firestoreService.updateRoom(roomId: widget.roomId, status: newStatus);
+      final roomService = ref.read(roomServiceProvider);
+      await roomService.updateRoom(roomId: widget.roomId, status: newStatus);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,7 +134,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
           ),
         );
         // Обновляем провайдер
-        ref.refresh(roomProvider(widget.roomId));
+        ref.invalidate(roomProvider(widget.roomId));
       }
     } catch (e) {
       if (mounted) {
@@ -106,8 +164,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       if (confirmed != true) return;
       
       // Проверяем конфликты локации
-      final firestoreService = ref.read(firestoreServiceProvider);
-      final hasConflict = await firestoreService.checkLocationConflict(
+      final roomService = ref.read(roomServiceProvider);
+      final hasConflict = await roomService.checkLocationConflict(
         location: room.location,
         startTime: now,
         endTime: room.endTime,
@@ -115,19 +173,13 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       );
       
       if (hasConflict) {
-        // Получаем информацию о конфликтующей игре
-        final conflictingRoom = await firestoreService.getConflictingRoom(
-          location: room.location,
-          startTime: now,
-          endTime: room.endTime,
-          excludeRoomId: room.id,
-        );
-        
+        // Показываем сообщение о конфликте без детальной информации
         if (mounted) {
-          ConfirmationDialog.showLocationConflict(
-            context,
-            plannedStartTime: room.startTime,
-            conflictingRoom: conflictingRoom,
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('В данной локации уже запланирована игра на это время'),
+              backgroundColor: AppColors.error,
+            ),
           );
         }
         return; // Не начинаем игру
@@ -215,7 +267,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              ref.refresh(roomProvider(widget.roomId));
+              ref.invalidate(roomProvider(widget.roomId));
               ref.refresh(currentUserProvider);
             },
           ),
@@ -290,7 +342,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                 ),
                 data: (user) => RefreshIndicator(
                   onRefresh: () async {
-                    ref.refresh(roomProvider(widget.roomId));
+                    ref.invalidate(roomProvider(widget.roomId));
                     ref.refresh(currentUserProvider);
                   },
                   child: SingleChildScrollView(
@@ -379,8 +431,12 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
               '${room.endTime.hour.toString().padLeft(2, '0')}:'
               '${room.endTime.minute.toString().padLeft(2, '0')}'),
             _buildInfoRow(Icons.sports, 'Режим игры', _getGameModeDisplayName(room.gameMode)),
-            _buildInfoRow(Icons.people, AppStrings.participants, 
-              '${room.participants.length}/${room.maxParticipants}'),
+            // Отображение участников/команд в зависимости от режима
+            if (room.isTeamMode)
+              _buildTeamsInfoRow(room)
+            else
+              _buildInfoRow(Icons.people, AppStrings.participants, 
+                '${room.participants.length}/${room.maxParticipants}'),
           ],
         ),
       ),
@@ -430,7 +486,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             const SizedBox(height: AppSizes.mediumSpace),
             
             StreamBuilder<List<TeamModel>>(
-              stream: ref.read(firestoreServiceProvider).getTeamsForRoomStream(widget.roomId),
+              stream: ref.read(teamServiceProvider).watchTeamsForRoom(widget.roomId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(
@@ -560,12 +616,12 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     }
 
     // Загружаем данные игроков
-    final firestoreService = ref.read(firestoreServiceProvider);
+    final userService = ref.read(userServiceProvider);
     final players = <UserModel?>[];
     
     for (final playerId in team.members) {
       try {
-        final player = await firestoreService.getUserById(playerId);
+        final player = await userService.getUserById(playerId);
         players.add(player);
       } catch (e) {
         debugPrint('Ошибка загрузки игрока $playerId: $e');
@@ -620,9 +676,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     final currentUser = ref.read(currentUserProvider).value;
     final canViewEmail = currentUser?.role == UserRole.organizer || currentUser?.role == UserRole.admin;
     
-    // Загружаем предстоящие игры игрока
-    final firestoreService = ref.read(firestoreServiceProvider);
-    final upcomingGames = await firestoreService.getUpcomingGamesForUser(player.id);
+    // Пока убираем загрузку предстоящих игр
+    final upcomingGames = <GameRef>[];
     
     // Проверяем статус дружбы
     bool isFriend = false;
@@ -631,7 +686,9 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       if (currentUser.id == player.id) {
         isOwnProfile = true;
       } else {
-        isFriend = await firestoreService.isFriend(currentUser.id, player.id);
+        final userService = ref.read(userServiceProvider);
+        final friends = await userService.getFriends(currentUser.id);
+        isFriend = friends.any((friend) => friend.id == player.id);
       }
     }
     
@@ -836,7 +893,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         if (!isOrganizer) ...[
           // Проверяем, в какой команде пользователь
           FutureBuilder<TeamModel?>(
-            future: ref.read(firestoreServiceProvider).getUserTeamInRoom(user.id, widget.roomId),
+            future: ref.read(teamServiceProvider).getUserTeamInRoom(user.id, widget.roomId),
             builder: (context, snapshot) {
               final userTeam = snapshot.data;
               final hasTeam = userTeam != null;
@@ -877,27 +934,50 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                 return SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: (room.status != RoomStatus.planned || hasStarted) 
+                    onPressed: (room.status != RoomStatus.planned || hasStarted || _isJoining) 
                         ? null 
-                        : _selectTeam,
+                        : () {
+                            // Дополнительная проверка для командного режима
+                            if (room.isTeamMode && user.role == UserRole.user && !room.participants.contains(user.id)) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Вы можете участвовать в командных играх только через организатора вашей команды'),
+                                  backgroundColor: AppColors.warning,
+                                ),
+                              );
+                              return;
+                            }
+                            _selectTeam();
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: Text(
-                      room.status != RoomStatus.planned 
-                          ? 'Игра уже началась'
-                          : hasStarted
-                              ? 'Игра уже началась'
-                              : room.isTeamMode
-                                  ? 'Присоединиться к матчу моей командой'
-                                  : 'Выбрать команду',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
+                    child: _isJoining
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            room.status != RoomStatus.planned 
+                                ? 'Игра уже началась'
+                                : hasStarted
+                                    ? 'Игра уже началась'
+                                    : room.isTeamMode
+                                        ? (user.role == UserRole.organizer 
+                                            ? 'Присоединиться моей командой' 
+                                            : 'Только через организатора команды')
+                                        : 'Выбрать команду',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 );
               }
@@ -998,11 +1078,11 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
 
   Future<void> _handleFriendAction(UserModel currentUser, UserModel player, bool isFriend) async {
     try {
-      final firestoreService = ref.read(firestoreServiceProvider);
+      final userService = ref.read(userServiceProvider);
       
       if (isFriend) {
         // Удаляем из друзей
-        await firestoreService.removeFriend(currentUser.id, player.id);
+        await userService.removeFriend(currentUser.id, player.id);
         if (mounted) {
           Navigator.of(context).pop(); // Закрываем диалог
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1014,7 +1094,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         }
       } else {
         // Добавляем в друзья
-        await firestoreService.addFriend(currentUser.id, player.id);
+        await userService.addFriend(currentUser.id, player.id);
         if (mounted) {
           Navigator.of(context).pop(); // Закрываем диалог
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1050,5 +1130,43 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       case GameMode.tournament:
         return 'Турнир';
     }
+  }
+
+  Widget _buildTeamsInfoRow(RoomModel room) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSizes.smallSpace),
+      child: Row(
+        children: [
+          Icon(Icons.groups, size: AppSizes.smallIconSize, color: AppColors.textSecondary),
+          const SizedBox(width: AppSizes.smallSpace),
+          Text(
+            '${AppStrings.participants}: ',
+            style: const TextStyle(
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<List<TeamModel>>(
+              stream: ref.read(teamServiceProvider).watchTeamsForRoom(room.id),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                }
+                final teams = snapshot.data ?? [];
+                return Text(
+                  '${teams.length}/${room.numberOfTeams} команд',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 } 

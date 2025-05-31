@@ -2,11 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
-import '../services/firestore_service.dart';
+import 'user_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final UserService _userService = UserService();
 
   // Получение текущего пользователя
   User? get currentUser => _auth.currentUser;
@@ -21,9 +22,7 @@ class AuthService {
     try {
       if (_auth.currentUser == null) return null;
       
-      // Используем FirestoreService для получения пользователя с проверкой целостности команды
-      final firestoreService = FirestoreService();
-      final user = await firestoreService.getUserById(_auth.currentUser!.uid);
+      final user = await _userService.getUserById(_auth.currentUser!.uid);
       
       if (user != null) {
         // Обновляем время последнего входа
@@ -59,19 +58,7 @@ class AuthService {
 
   // Проверка уникальности ника
   Future<bool> isNicknameUnique(String nickname) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('name', isEqualTo: nickname)
-          .limit(1)
-          .get();
-      
-      return querySnapshot.docs.isEmpty;
-    } catch (e) {
-      debugPrint('Ошибка проверки уникальности ника: $e');
-      // В случае ошибки считаем, что ник не уникален (безопасный подход)
-      return false;
-    }
+    return await _userService.isNicknameUnique(nickname);
   }
 
   // Регистрация по email/password
@@ -107,7 +94,7 @@ class AuthService {
         createdAt: DateTime.now(),
       );
       
-      await _firestore.collection('users').doc(uid).set(newUser.toMap());
+      await _userService.createUser(newUser);
     } catch (e) {
       debugPrint('Ошибка создания профиля: $e');
       rethrow;

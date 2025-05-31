@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/firebase_test.dart';
 import '../services/auth_service.dart';
-import '../services/firestore_service.dart';
+import '../services/room_service.dart';
 
 class FirebaseTestScreen extends StatefulWidget {
   const FirebaseTestScreen({super.key});
@@ -12,7 +12,7 @@ class FirebaseTestScreen extends StatefulWidget {
 
 class _FirebaseTestScreenState extends State<FirebaseTestScreen> {
   final AuthService _authService = AuthService();
-  final FirestoreService _firestoreService = FirestoreService();
+  final RoomService _roomService = RoomService();
   
   String _testResults = '';
   bool _isLoading = false;
@@ -105,12 +105,8 @@ class _FirebaseTestScreenState extends State<FirebaseTestScreen> {
       _addResult('📊 Тестирование Firestore...');
       
       // Получаем активные комнаты
-      final activeRooms = await _firestoreService.getActiveRooms();
+      final activeRooms = await _roomService.getActiveRooms();
       _addResult('🏐 Активных комнат: ${activeRooms.length}');
-      
-      // Получаем запланированные комнаты
-      final plannedRooms = await _firestoreService.getPlannedRooms();
-      _addResult('📅 Запланированных комнат: ${plannedRooms.length}');
       
       _addResult('✅ Тест Firestore завершен');
       

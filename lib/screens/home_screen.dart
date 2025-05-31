@@ -64,6 +64,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     }
   }
 
+  // Функция для получения количества команд в командном режиме
+  Future<int> _getTeamsCount(String roomId) async {
+    try {
+      final teamService = ref.read(teamServiceProvider);
+      final teams = await teamService.getTeamsForRoom(roomId);
+      return teams.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Функция для отображения участников или команд в зависимости от режима
+  Widget _buildParticipantsDisplay(RoomModel room) {
+    if (room.isTeamMode) {
+      // Для командного режима показываем команды
+      return FutureBuilder<int>(
+        future: _getTeamsCount(room.id),
+        builder: (context, snapshot) {
+          final teamsCount = snapshot.data ?? 0;
+          return Row(
+            children: [
+              const Icon(
+                Icons.groups,
+                size: AppSizes.smallIconSize,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$teamsCount/${room.numberOfTeams} команд',
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      // Для обычного режима показываем игроков
+      return Row(
+        children: [
+          const Icon(
+            Icons.people,
+            size: AppSizes.smallIconSize,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '${room.participants.length}/${room.maxParticipants}',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      );
+    }
+  }
+
   void _showLoginDialog() {
     showDialog(
       context: context,
@@ -250,20 +304,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.people,
-                        size: AppSizes.smallIconSize,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${room.participants.length}/${room.maxParticipants}',
-                        style: const TextStyle(color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
+                  _buildParticipantsDisplay(room),
                   const SizedBox(height: 4),
                   Row(
                     children: [

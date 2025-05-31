@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
-import '../services/firestore_service.dart';
 import '../utils/constants.dart';
 import '../models/user_model.dart';
 import '../models/team_model.dart';
@@ -9,55 +8,17 @@ import '../models/room_model.dart';
 import '../providers/providers.dart';
 import '../widgets/player_card.dart';
 
-// Модель команды (временная, пока не создана отдельная модель)
-class TeamModel {
-  final String id;
-  final String name;
-  final List<String> members;
-  final String roomId;
-  final DateTime createdAt;
-
-  TeamModel({
-    required this.id,
-    required this.name,
-    required this.members,
-    required this.roomId,
-    required this.createdAt,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'members': members,
-      'roomId': roomId,
-      'createdAt': createdAt,
-    };
-  }
-
-  factory TeamModel.fromMap(Map<String, dynamic> map) {
-    return TeamModel(
-      id: map['id'] ?? '',
-      name: map['name'] ?? '',
-      members: List<String>.from(map['members'] ?? []),
-      roomId: map['roomId'] ?? '',
-      createdAt: map['createdAt']?.toDate() ?? DateTime.now(),
-    );
-  }
-}
-
-class TeamScreen extends StatefulWidget {
+class TeamScreen extends ConsumerStatefulWidget {
   final String roomId;
   
   const TeamScreen({super.key, required this.roomId});
 
   @override
-  State<TeamScreen> createState() => _TeamScreenState();
+  ConsumerState<TeamScreen> createState() => _TeamScreenState();
 }
 
-class _TeamScreenState extends State<TeamScreen> {
+class _TeamScreenState extends ConsumerState<TeamScreen> {
   final AuthService _authService = AuthService();
-  final FirestoreService _firestoreService = FirestoreService();
 
   UserModel? _currentUser;
   List<TeamModel> _teams = [];
@@ -66,10 +27,16 @@ class _TeamScreenState extends State<TeamScreen> {
   bool _isLoading = true;
   bool _isCreatingTeam = false;
 
+  late Map<String, String> teamNames = {
+    'team1': 'Команда 1',
+    'team2': 'Команда 2',
+  };
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadTeamNames();
   }
 
   Future<void> _loadData() async {
@@ -79,36 +46,21 @@ class _TeamScreenState extends State<TeamScreen> {
 
     try {
       final currentUser = await _authService.getCurrentUserModel();
-      final room = await _firestoreService.getRoomById(widget.roomId);
+      final room = await ref.read(roomServiceProvider).getRoomById(widget.roomId);
       
       if (room != null) {
         // Загружаем участников комнаты
         final participants = await Future.wait(
-          room.participants.map((id) => _firestoreService.getUserById(id))
+          room.participants.map((id) => ref.read(userServiceProvider).getUserById(id))
         );
         
-        // Пока что создаем тестовые команды
-        final testTeams = [
-          TeamModel(
-            id: 'team-1',
-            name: 'Команда А',
-            members: room.participants.take(3).toList(),
-            roomId: widget.roomId,
-            createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-          ),
-          TeamModel(
-            id: 'team-2',
-            name: 'Команда Б',
-            members: room.participants.skip(3).take(3).toList(),
-            roomId: widget.roomId,
-            createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
-          ),
-        ];
+        // Загружаем команды
+        final teams = await ref.read(teamServiceProvider).getTeamsForRoom(widget.roomId);
 
         if (mounted) {
           setState(() {
             _currentUser = currentUser;
-            _teams = testTeams;
+            _teams = teams;
             _roomParticipants = participants.whereType<UserModel>().toList();
             _availableUsers = _roomParticipants
                 .where((user) => !_teams.any((team) => team.members.contains(user.id)))
@@ -129,6 +81,24 @@ class _TeamScreenState extends State<TeamScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _loadTeamNames() async {
+    try {
+      final teamService = ref.read(teamServiceProvider);
+      final teams = await teamService.getTeamsForRoom(widget.roomId);
+      
+      if (teams.length >= 2) {
+        setState(() {
+          teamNames = {
+            'team1': teams[0].name,
+            'team2': teams[1].name,
+          };
+        });
+      }
+    } catch (e) {
+      // Используем значения по умолчанию
     }
   }
 
@@ -189,7 +159,7 @@ class _TeamScreenState extends State<TeamScreen> {
         );
 
         // TODO: Сохранить команду в Firestore
-        // await _firestoreService.createTeam(newTeam);
+        // await _teamService.createTeam(newTeam);
 
         setState(() {
           _teams.add(newTeam);
@@ -223,7 +193,7 @@ class _TeamScreenState extends State<TeamScreen> {
   Future<void> _addUserToTeam(TeamModel team, UserModel user) async {
     try {
       // TODO: Обновить команду в Firestore
-      // await _firestoreService.addUserToTeam(team.id, user.id);
+      // await _teamService.addUserToTeam(team.id, user.id);
 
       setState(() {
         final teamIndex = _teams.indexWhere((t) => t.id == team.id);
@@ -262,7 +232,7 @@ class _TeamScreenState extends State<TeamScreen> {
   Future<void> _removeUserFromTeam(TeamModel team, String userId) async {
     try {
       // TODO: Обновить команду в Firestore
-      // await _firestoreService.removeUserFromTeam(team.id, userId);
+      // await _teamService.removeUserFromTeam(team.id, userId);
 
       final user = _roomParticipants.firstWhere((u) => u.id == userId);
       

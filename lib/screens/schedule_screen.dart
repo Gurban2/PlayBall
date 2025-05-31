@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/providers.dart';
 import '../utils/constants.dart';
 import '../models/room_model.dart';
@@ -30,6 +31,91 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Функция для обработки ошибок Firebase с кликабельными ссылками
+  void _showFirebaseError(String error) {
+    // Проверяем, содержит ли ошибка ссылку на создание индекса
+    if (error.contains('https://console.firebase.google.com')) {
+      final urlMatch = RegExp(r'https://console\.firebase\.google\.com[^\s]+').firstMatch(error);
+      final url = urlMatch?.group(0);
+      
+      if (url != null) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Требуется создать индекс Firestore'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Для корректной работы расписания необходимо создать индекс в Firebase Firestore.',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Нажмите кнопку ниже, чтобы открыть Firebase Console и создать индекс:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    error,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Закрыть'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  try {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Не удалось открыть ссылку: $e'),
+                          backgroundColor: AppColors.error,
+                        ),
+                      );
+                    }
+                  }
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Открыть Firebase Console'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+    
+    // Для обычных ошибок показываем стандартное сообщение
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ошибка загрузки: $error')),
+    );
   }
 
   void _navigateToRoomDetails(String roomId) {
@@ -336,7 +422,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
           children: [
             const Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: 16),
-            Text('Ошибка загрузки: $error'),
+            GestureDetector(
+              onTap: () => _showFirebaseError(error.toString()),
+              child: Text(
+                'Ошибка загрузки. Нажмите для подробностей.',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
@@ -410,7 +505,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
               children: [
                 const Icon(Icons.error_outline, size: 64, color: AppColors.error),
                 const SizedBox(height: 16),
-                Text('Ошибка загрузки: $error'),
+                GestureDetector(
+                  onTap: () => _showFirebaseError(error.toString()),
+                  child: const Text(
+                    'Ошибка загрузки. Нажмите для подробностей.',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => ref.refresh(userRoomsProvider),
@@ -527,28 +631,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.people, size: 12, color: AppColors.secondary),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${room.participants.length}/${room.maxParticipants}',
-                          style: const TextStyle(
-                            color: AppColors.secondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildParticipantsDisplay(room),
                 ],
               ),
               
@@ -618,6 +701,60 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         return 'Команды';
       case GameMode.tournament:
         return 'Турнир';
+    }
+  }
+
+  // Функция для получения количества команд в командном режиме
+  Future<int> _getTeamsCount(String roomId) async {
+    try {
+      final teamService = ref.read(teamServiceProvider);
+      final teams = await teamService.getTeamsForRoom(roomId);
+      return teams.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Функция для отображения участников или команд в зависимости от режима
+  Widget _buildParticipantsDisplay(RoomModel room) {
+    if (room.isTeamMode) {
+      // Для командного режима показываем команды
+      return FutureBuilder<int>(
+        future: _getTeamsCount(room.id),
+        builder: (context, snapshot) {
+          final teamsCount = snapshot.data ?? 0;
+          return Row(
+            children: [
+              Icon(
+                Icons.groups,
+                size: AppSizes.smallIconSize,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$teamsCount/${room.numberOfTeams} команд',
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      // Для обычного режима показываем игроков
+      return Row(
+        children: [
+          Icon(
+            Icons.people,
+            size: AppSizes.smallIconSize,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '${room.participants.length}/${room.maxParticipants}',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      );
     }
   }
 } 

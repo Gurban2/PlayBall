@@ -22,12 +22,12 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
   Timer? _debounceTimer;
   bool _isSearching = false;
   bool _showFilters = true;
-  
+
   final List<String> _locations = [
     'Все города',
     ...AppStrings.availableLocations,
   ];
-  
+
   final List<String> _levels = [
     'Любой уровень',
     'Начинающий',
@@ -99,7 +99,8 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: Icon(_showFilters ? Icons.filter_list_off : Icons.filter_list),
+            icon:
+                Icon(_showFilters ? Icons.filter_list_off : Icons.filter_list),
             onPressed: () {
               setState(() {
                 _showFilters = !_showFilters;
@@ -150,7 +151,8 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                                 child: SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 ),
                               )
                             : null,
@@ -159,14 +161,15 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                       onChanged: (value) {
                         // Отменяем предыдущий таймер
                         _debounceTimer?.cancel();
-                        
+
                         // Показываем индикатор загрузки
                         setState(() {
                           _isSearching = true;
                         });
-                        
+
                         // Устанавливаем новый таймер с задержкой 500мс
-                        _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+                        _debounceTimer =
+                            Timer(const Duration(milliseconds: 500), () {
                           setState(() {
                             _isSearching = false;
                           });
@@ -174,7 +177,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                       },
                     ),
                     const SizedBox(height: AppSizes.mediumSpace),
-                    
+
                     // Фильтры
                     Row(
                       children: [
@@ -186,7 +189,8 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                               labelText: 'Город',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.location_on),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                               isDense: true,
                             ),
                             style: const TextStyle(fontSize: 13),
@@ -209,7 +213,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                           ),
                         ),
                         const SizedBox(width: AppSizes.smallSpace),
-                        
+
                         // Уровень
                         Expanded(
                           child: DropdownButtonFormField<String>(
@@ -218,7 +222,8 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                               labelText: 'Уровень',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.trending_up),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                               isDense: true,
                             ),
                             style: const TextStyle(fontSize: 13),
@@ -243,7 +248,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                       ],
                     ),
                     const SizedBox(height: AppSizes.mediumSpace),
-                    
+
                     // Дата и время
                     Row(
                       children: [
@@ -273,7 +278,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                       ],
                     ),
                     const SizedBox(height: AppSizes.smallSpace),
-                    
+
                     // Кнопка очистки фильтров
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -291,7 +296,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                   ],
                 ),
               ),
-            
+
             // Результаты поиска
             Expanded(
               child: _buildSearchResults(),
@@ -330,12 +335,12 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
 
   Widget _buildSearchResults() {
     final roomsAsync = ref.watch(roomsProvider);
-    
+
     return roomsAsync.when(
       data: (rooms) {
         // TODO: Применить фильтры
         final filteredRooms = _applyFilters(rooms);
-        
+
         if (filteredRooms.isEmpty) {
           return const Center(
             child: Column(
@@ -364,7 +369,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
             ),
           );
         }
-        
+
         return ListView.builder(
           padding: AppSizes.screenPadding,
           itemCount: filteredRooms.length,
@@ -385,19 +390,25 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
     return rooms.where((room) {
       // Фильтр по названию
       if (_searchController.text.isNotEmpty) {
-        if (!room.title.toLowerCase().contains(_searchController.text.toLowerCase()) &&
-            !room.description.toLowerCase().contains(_searchController.text.toLowerCase())) {
+        if (!room.title
+                .toLowerCase()
+                .contains(_searchController.text.toLowerCase()) &&
+            !room.description
+                .toLowerCase()
+                .contains(_searchController.text.toLowerCase())) {
           return false;
         }
       }
-      
+
       // Фильтр по локации
       if (_selectedLocation != 'Все города') {
-        if (!room.location.toLowerCase().contains(_selectedLocation.toLowerCase())) {
+        if (!room.location
+            .toLowerCase()
+            .contains(_selectedLocation.toLowerCase())) {
           return false;
         }
       }
-      
+
       // Фильтр по дате
       if (_selectedDate != null) {
         if (room.startTime.day != _selectedDate!.day ||
@@ -406,7 +417,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
           return false;
         }
       }
-      
+
       // Фильтр по времени
       if (_selectedTime != null) {
         final roomTime = TimeOfDay.fromDateTime(room.startTime);
@@ -414,7 +425,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
           return false;
         }
       }
-      
+
       return true;
     }).toList();
   }
@@ -476,7 +487,7 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              
+
               // Информация об игре
               Row(
                 children: [
@@ -484,12 +495,14 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        const Icon(Icons.location_on, size: 14, color: AppColors.primary),
+                        const Icon(Icons.location_on,
+                            size: 14, color: AppColors.primary),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             room.location,
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            style: const TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -497,32 +510,11 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                     ),
                   ),
                   // Участники
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.people, size: 12, color: AppColors.secondary),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${room.participants.length}/${room.maxParticipants}',
-                          style: const TextStyle(
-                            color: AppColors.secondary,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildParticipantsDisplay(room),
                 ],
               ),
               const SizedBox(height: 6),
-              
+
               // Время и режим игры
               Row(
                 children: [
@@ -531,7 +523,8 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                   Text(
                     '${room.startTime.day}.${room.startTime.month}.${room.startTime.year} '
                     '${room.startTime.hour}:${room.startTime.minute.toString().padLeft(2, '0')}',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12),
                   ),
                   const Spacer(),
                   Text(
@@ -561,4 +554,64 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
         return AppStrings.tournamentMode;
     }
   }
-} 
+
+  // Функция для получения количества команд в командном режиме
+  Future<int> _getTeamsCount(String roomId) async {
+    try {
+      final teamService = ref.read(teamServiceProvider);
+      final teams = await teamService.getTeamsForRoom(roomId);
+      return teams.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Функция для отображения участников или команд в зависимости от режима
+  Widget _buildParticipantsDisplay(RoomModel room) {
+    if (room.isTeamMode) {
+      // Для командного режима показываем команды
+      return FutureBuilder<int>(
+        future: _getTeamsCount(room.id),
+        builder: (context, snapshot) {
+          final teamsCount = snapshot.data ?? 0;
+          return Row(
+            children: [
+              Icon(
+                Icons.groups,
+                size: 12,
+                color: AppColors.secondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$teamsCount/${room.numberOfTeams} команд',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      // Для обычного режима показываем игроков
+      return Row(
+        children: [
+          Icon(
+            Icons.people,
+            size: 12,
+            color: AppColors.secondary,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '${room.participants.length}/${room.maxParticipants}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      );
+    }
+  }
+}
