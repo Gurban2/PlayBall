@@ -53,6 +53,13 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/images/setka.jfif
+    - assets/fonts/
+  
+  fonts:
+    - family: NotoSansSymbols
+      fonts:
+        - asset: assets/fonts/NotoSansSymbols-VariableFont_wght.ttf
   # Временно отключаем шрифты
   # fonts:
   #   - family: Roboto

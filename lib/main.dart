@@ -4,10 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
-import 'utils/app_router.dart';
-import 'utils/constants.dart';
-import 'utils/firebase_test.dart';
-import 'screens/firebase_test_screen.dart';
+import 'core/router/app_router.dart';
+import 'core/constants/constants.dart';
+import 'features/dashboard/presentation/screens/firebase_test_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,13 +22,9 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
-  // Тестирование подключения к Firebase (только в debug режиме)
+  // Firebase инициализирован успешно
   if (kDebugMode) {
-    try {
-      await FirebaseTestService.testFirebaseConnection();
-    } catch (e) {
-      debugPrint('⚠️ Ошибка при тестировании Firebase: $e');
-    }
+    debugPrint('✅ Firebase инициализирован успешно');
   }
   
   runApp(const ProviderScope(child: MyApp()));
