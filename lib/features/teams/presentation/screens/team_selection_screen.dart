@@ -6,6 +6,7 @@ import '../../../rooms/domain/entities/room_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/utils/game_time_utils.dart';
 
 class TeamSelectionScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -489,12 +490,9 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
     
     // Проверяем временные ограничения
     final now = DateTime.now();
-    final joinCutoffTime = room.startTime.subtract(const Duration(minutes: 5));
-    final isJoinBlocked = now.isAfter(joinCutoffTime);
     
     bool canJoin = !team.isFull && 
-                   room.effectiveStatus == RoomStatus.planned &&
-                   !isJoinBlocked;
+                   GameTimeUtils.canJoinGame(room);
     
     // Организатор не может присоединиться к команде другого организатора
     if (isOtherOrganizerTeam) {
@@ -508,14 +506,16 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
         return 'Команда соперника';
       } else if (team.isFull) {
         return 'Команда заполнена';
-      } else if (room.effectiveStatus != RoomStatus.planned) {
-        return 'Игра уже активна';
-      } else if (isJoinBlocked) {
-        final remainingMinutes = room.startTime.difference(now).inMinutes;
-        if (remainingMinutes > 0) {
-          return 'Присоединение заблокировано (${remainingMinutes} мин до игры)';
+      } else if (!GameTimeUtils.canJoinGame(room)) {
+        if (room.status != RoomStatus.planned) {
+          return 'Игра уже активна';
         } else {
-          return 'Игра уже началась';
+          final remainingMinutes = room.startTime.difference(now).inMinutes;
+          if (remainingMinutes > 0) {
+            return 'Присоединение заблокировано (${remainingMinutes} мин до игры)';
+          } else {
+            return 'Игра уже началась';
+          }
         }
       } else {
         return 'Присоединиться к команде';

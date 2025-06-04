@@ -4,11 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'dart:async';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/providers.dart';
+import '../../../../core/utils/game_time_utils.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
 import '../../../rooms/domain/entities/room_model.dart';
 import '../../../../shared/widgets/dialogs/confirmation_dialog.dart';
 import '../../../../shared/widgets/cards/player_card.dart';
+import '../widgets/room_action_buttons.dart';
 
 class RoomScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -25,12 +27,34 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   @override
   void initState() {
     super.initState();
-    // Таймер убран - обновления происходят только при изменении данных
+    // Запускаем автоматическую очистку при открытии экрана
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoUpdateGameStatuses();
+    });
   }
 
   @override
   void dispose() {
     super.dispose();
+  }
+
+  Future<void> _autoUpdateGameStatuses() async {
+    try {
+      final roomService = ref.read(roomServiceProvider);
+      
+      // Автоматически запускаем запланированные игры
+      await roomService.autoStartScheduledGames();
+      
+      // Автоматически завершаем активные игры
+      await roomService.autoCompleteExpiredGames();
+      
+      // Отменяем просроченные запланированные игры
+      await roomService.autoCancelExpiredPlannedGames();
+      
+      debugPrint('✅ Статусы игр обновлены автоматически в RoomScreen');
+    } catch (e) {
+      debugPrint('❌ Ошибка обновления статусов игр в RoomScreen: $e');
+    }
   }
 
   Future<void> _selectTeam() async {
@@ -165,84 +189,6 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         );
       }
     }
-  }
-
-  // Новый метод для начала игры с проверками
-  Future<void> _startGameWithConfirmation() async {
-    final roomAsync = ref.read(roomProvider(widget.roomId));
-    final room = roomAsync.value;
-    
-    if (room == null) return;
-    
-    final now = DateTime.now();
-    final isEarly = now.isBefore(room.startTime);
-    
-    // Если игра начинается раньше времени, показываем подтверждение
-    if (isEarly) {
-      final confirmed = await ConfirmationDialog.showStartEarly(context);
-      if (confirmed != true) return;
-      
-      // Проверяем конфликты локации
-      final roomService = ref.read(roomServiceProvider);
-      final hasConflict = await roomService.checkLocationConflict(
-        location: room.location,
-        startTime: now,
-        endTime: room.endTime,
-        excludeRoomId: room.id,
-      );
-      
-      if (hasConflict) {
-        // Показываем сообщение о конфликте без детальной информации
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('В данной локации уже запланирована игра на это время'),
-              backgroundColor: AppColors.error,
-            ),
-          );
-        }
-        return; // Не начинаем игру
-      }
-    }
-    
-    // Если все проверки пройдены, начинаем игру
-    await _updateRoomStatus(RoomStatus.active);
-  }
-
-  // Новый метод для завершения игры с подтверждением
-  Future<void> _endGameWithConfirmation() async {
-    final roomAsync = ref.read(roomProvider(widget.roomId));
-    final room = roomAsync.value;
-    
-    if (room == null) return;
-    
-    final now = DateTime.now();
-    final gameStartTime = room.startTime;
-    final minimumEndTime = gameStartTime.add(const Duration(hours: 1));
-    
-    // Проверяем, прошел ли минимальный час игры
-    if (now.isBefore(minimumEndTime)) {
-      final remainingMinutes = minimumEndTime.difference(now).inMinutes;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Матч можно завершить только через $remainingMinutes минут (минимальная длительность - 1 час)'),
-          backgroundColor: AppColors.warning,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-    
-    final isEarly = now.isBefore(room.endTime);
-    
-    // Если игра завершается раньше времени, показываем подтверждение
-    if (isEarly) {
-      final confirmed = await ConfirmationDialog.showEndEarly(context);
-      if (confirmed != true) return;
-    }
-    
-    // Завершаем игру
-    await _updateRoomStatus(RoomStatus.completed);
   }
 
   String _getStatusText(RoomStatus status) {
@@ -404,7 +350,16 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                         // Кнопки действий
                         if (user != null) ...[
                           const SizedBox(height: AppSizes.mediumSpace),
-                          _buildActionButtons(user, room),
+                          RoomActionButtons(
+                            user: user,
+                            room: room,
+                            teamService: ref.read(teamServiceProvider),
+                            isJoining: _isJoining,
+                            roomId: widget.roomId,
+                            onSelectTeam: _selectTeam,
+                            onLeaveTeam: _leaveTeam,
+                            onUpdateRoomStatus: _updateRoomStatus,
+                          ),
                         ],
                       ],
                     ),
@@ -438,11 +393,11 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: _getStatusColor(room.effectiveStatus),
+                    color: _getStatusColor(room.status),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
-                    _getStatusText(room.effectiveStatus),
+                    _getStatusText(room.status),
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -945,13 +900,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      // Проверяем статус игры
-                      if (room.effectiveStatus != RoomStatus.planned) return null;
-                      
-                      // Проверяем временную блокировку за 5 минут до начала
-                      final now = DateTime.now();
-                      final leaveCutoffTime = room.startTime.subtract(const Duration(minutes: 5));
-                      if (now.isAfter(leaveCutoffTime)) return null;
+                      // Используем новую утилиту для проверки
+                      if (!GameTimeUtils.canLeaveGame(room)) return null;
                       
                       if (_isJoining) return null;
                       
@@ -972,10 +922,9 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                           )
                         : Builder(
                             builder: (context) {
-                              // Проверяем временную блокировку
-                              final now = DateTime.now();
-                              final leaveCutoffTime = room.startTime.subtract(const Duration(minutes: 5));
-                              if (now.isAfter(leaveCutoffTime)) {
+                              // Используем новую утилиту
+                              if (!GameTimeUtils.canLeaveGame(room)) {
+                                final now = DateTime.now();
                                 final remainingMinutes = room.startTime.difference(now).inMinutes;
                                 if (remainingMinutes > 0) {
                                   return Text(
@@ -1018,13 +967,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      // Проверяем эффективный статус игры
-                      if (room.effectiveStatus != RoomStatus.planned) return null;
-                      
-                      // Проверяем временную блокировку за 5 минут до начала
-                      final now = DateTime.now();
-                      final joinCutoffTime = room.startTime.subtract(const Duration(minutes: 5));
-                      if (now.isAfter(joinCutoffTime)) return null;
+                      // Используем новую утилиту для проверки
+                      if (!GameTimeUtils.canJoinGame(room)) return null;
                       
                       // Дополнительная проверка для командного режима
                       if (room.isTeamMode && user.role == UserRole.user && !room.participants.contains(user.id)) {
@@ -1060,22 +1004,20 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                           )
                         : Builder(
                             builder: (context) {
-                              // Проверяем эффективный статус игры
-                              if (room.effectiveStatus != RoomStatus.planned) {
-                                return const Text(
-                                  'Игра уже активна',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                );
-                              }
-                              
-                              // Проверяем временную блокировку
-                              final now = DateTime.now();
-                              final joinCutoffTime = room.startTime.subtract(const Duration(minutes: 5));
-                              if (now.isAfter(joinCutoffTime)) {
+                              // Используем новую утилиту
+                              if (!GameTimeUtils.canJoinGame(room)) {
+                                if (room.status != RoomStatus.planned) {
+                                  return const Text(
+                                    'Игра уже активна',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                }
+                                
+                                final now = DateTime.now();
                                 final remainingMinutes = room.startTime.difference(now).inMinutes;
                                 if (remainingMinutes > 0) {
                                   return Text(
@@ -1142,109 +1084,32 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         
                                 // Кнопки для организатора
                         if (isOrganizer) ...[
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                if (room.effectiveStatus != RoomStatus.planned) return null;
-                                
-                                final now = DateTime.now();
-                                final allowedStartTime = room.startTime.add(const Duration(minutes: 5));
-                                
-                                // Проверяем, прошло ли время начала игры + 5 минут
-                                if (now.isBefore(allowedStartTime)) {
-                                  return null; // Кнопка неактивна
-                                }
-                                
-                                return () => _startGameWithConfirmation();
-                              }(),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.success,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                              ),
-                              child: Builder(
-                                builder: (context) {
-                                  if (room.effectiveStatus != RoomStatus.planned) {
-                                    return const Text(
-                                      'Игра уже началась',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    );
-                                  }
-                                  
-                                  final now = DateTime.now();
-                                  final allowedStartTime = room.startTime.add(const Duration(minutes: 5));
-                                  
-                                  if (now.isBefore(allowedStartTime)) {
-                                    return const Text(
-                                      'Начать игру',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    );
-                                  }
-                                  
-                                  return const Text(
-                                    AppStrings.startGame,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: AppSizes.smallSpace),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: room.effectiveStatus == RoomStatus.active && room.canBeEndedManually
-                                  ? () => _endGameWithConfirmation()
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                              ),
-                              child: Text(
-                                room.effectiveStatus == RoomStatus.active && !room.canBeEndedManually
-                                    ? 'Завершить игру (через ${room.startTime.add(const Duration(hours: 1)).difference(DateTime.now()).inMinutes} мин)'
-                                    : AppStrings.endGame,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                          // Кнопка отмены игры - только для запланированных игр
+                          if (room.status == RoomStatus.planned) ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: GameTimeUtils.canCancelGame(room)
+                                    ? () => _updateRoomStatus(RoomStatus.cancelled)
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.error,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                ),
+                                child: Text(
+                                  GameTimeUtils.canCancelGame(room)
+                                      ? AppStrings.cancelGame
+                                      : 'Отмена заблокирована (все команды заполнены)',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: AppSizes.smallSpace),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: room.effectiveStatus == RoomStatus.planned 
-                                  ? () => _updateRoomStatus(RoomStatus.cancelled)
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.error,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                              ),
-                              child: const Text(
-                                AppStrings.cancelGame,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
+                          ],
                         ],
                         
                         // Кнопка "Назад" для всех пользователей

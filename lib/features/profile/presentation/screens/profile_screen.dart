@@ -363,9 +363,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         ),
                         Flexible(
                           child: _buildCompactStat(
-                            '${user.winRate.toStringAsFixed(0)}%',
-                            'Винрейт',
-                            Icons.trending_up,
+                            user.totalScore.toString(),
+                            'Очки',
+                            Icons.star_rate,
                           ),
                         ),
                       ],
@@ -409,7 +409,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.score,
+                                Icon(Icons.star_rate,
                                     color: AppColors.primary, size: 16),
                                 const SizedBox(width: 6),
                                 Text(

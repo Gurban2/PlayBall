@@ -395,4 +395,25 @@ class UserService {
 
     return snapshot.docs.length;
   }
+
+  // Начисление очков игрокам после завершения матча
+  Future<void> awardPointsToPlayers(List<String> playerIds) async {
+    if (playerIds.isEmpty) return;
+
+    final batch = _firestore.batch();
+
+    for (final playerId in playerIds) {
+      final userRef = _firestore.collection(_usersCollection).doc(playerId);
+      
+      // Увеличиваем totalScore на 1 и gamesPlayed на 1
+      batch.update(userRef, {
+        'totalScore': FieldValue.increment(1),
+        'gamesPlayed': FieldValue.increment(1),
+        'updatedAt': Timestamp.now(),
+      });
+    }
+
+    await batch.commit();
+    print('🏆 Начислено по 1 очку ${playerIds.length} игрокам');
+  }
 } 

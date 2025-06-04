@@ -8,6 +8,7 @@ import '../shared/services/storage_service.dart';
 import '../features/auth/domain/entities/user_model.dart';
 import '../features/rooms/domain/entities/room_model.dart';
 import '../features/teams/domain/entities/team_model.dart';
+import '../features/notifications/data/datasources/game_notification_service.dart';
 
 // Провайдеры для сервисов
 final authServiceProvider = Provider<AuthService>((ref) {
@@ -28,6 +29,25 @@ final teamServiceProvider = Provider<TeamService>((ref) {
 
 final storageServiceProvider = Provider<StorageService>((ref) {
   return StorageService();
+});
+
+// === NOTIFICATION PROVIDERS ===
+
+/// Сервис уведомлений о играх
+final gameNotificationServiceProvider = Provider<GameNotificationService>((ref) {
+  return GameNotificationService();
+});
+
+/// Stream провайдер для уведомлений о играх пользователя
+final gameNotificationsStreamProvider = StreamProvider.family<List<dynamic>, String>((ref, userId) {
+  final gameNotificationService = ref.read(gameNotificationServiceProvider);
+  return gameNotificationService.getGameNotificationsStream(userId);
+});
+
+/// Количество непрочитанных игровых уведомлений
+final unreadGameNotificationsCountProvider = FutureProvider.family<int, String>((ref, userId) async {
+  final gameNotificationService = ref.read(gameNotificationServiceProvider);
+  return await gameNotificationService.getUnreadCount(userId);
 });
 
 // Провайдер для текущего пользователя

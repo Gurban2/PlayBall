@@ -811,11 +811,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(room.effectiveStatus),
+                      color: _getStatusColor(room.status),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      _getStatusText(room.effectiveStatus),
+                      _getStatusText(room.status),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,

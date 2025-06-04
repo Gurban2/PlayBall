@@ -46,7 +46,7 @@ class RoomCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _StatusChip(room.effectiveStatus),
+                  _StatusChip(room.status),
                 ],
               ),
               

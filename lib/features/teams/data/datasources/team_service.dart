@@ -8,6 +8,7 @@ import '../../../teams/domain/entities/user_team_model.dart';
 import '../../../teams/domain/entities/team_invitation_model.dart';
 import '../../../teams/domain/entities/team_application_model.dart';
 import 'package:flutter/foundation.dart';
+import '../../../../core/utils/game_time_utils.dart';
 
 class TeamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -68,8 +69,8 @@ class TeamService {
 
     final room = RoomModel.fromMap(roomDoc.data()!);
     
-    // Проверяем статус игры (эффективный статус учитывает автоматическую активацию)
-    if (room.effectiveStatus != RoomStatus.planned) {
+    // Проверяем статус игры (используем GameTimeUtils для проверки)
+    if (!GameTimeUtils.canJoinGame(room)) {
       throw Exception('Нельзя присоединиться к команде: игра уже активна или началась');
     }
 
@@ -119,8 +120,8 @@ class TeamService {
 
     final room = RoomModel.fromMap(roomDoc.data()!);
     
-    // Проверяем статус игры (эффективный статус учитывает автоматическую активацию)
-    if (room.effectiveStatus != RoomStatus.planned) {
+    // Проверяем статус игры (используем GameTimeUtils для проверки)
+    if (!GameTimeUtils.canLeaveGame(room)) {
       throw Exception('Нельзя покинуть команду: игра уже активна или началась');
     }
 

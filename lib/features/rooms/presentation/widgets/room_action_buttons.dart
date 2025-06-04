@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/game_time_utils.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
 import '../../../teams/data/datasources/team_service.dart';
@@ -16,8 +17,6 @@ class RoomActionButtons extends StatelessWidget {
   final VoidCallback onSelectTeam;
   final Function(String teamId, UserModel user) onLeaveTeam;
   final Function(RoomStatus status) onUpdateRoomStatus;
-  final VoidCallback onStartGameWithConfirmation;
-  final VoidCallback onEndGameWithConfirmation;
 
   const RoomActionButtons({
     super.key,
@@ -29,8 +28,6 @@ class RoomActionButtons extends StatelessWidget {
     required this.onSelectTeam,
     required this.onLeaveTeam,
     required this.onUpdateRoomStatus,
-    required this.onStartGameWithConfirmation,
-    required this.onEndGameWithConfirmation,
   });
 
   @override
@@ -73,9 +70,9 @@ class RoomActionButtons extends StatelessWidget {
           return SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: (isJoining || room.status != RoomStatus.planned || hasStarted)
-                  ? null
-                  : () => onLeaveTeam(userTeam.id, user),
+              onPressed: GameTimeUtils.canLeaveGame(room) && !isJoining
+                  ? () => onLeaveTeam(userTeam.id, user)
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.warning,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -104,9 +101,9 @@ class RoomActionButtons extends StatelessWidget {
           return SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: (room.status != RoomStatus.planned || hasStarted || isJoining)
-                  ? null
-                  : () => _handleSelectTeam(context),
+              onPressed: GameTimeUtils.canJoinGame(room) && !isJoining
+                  ? () => _handleSelectTeam(context)
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -136,111 +133,35 @@ class RoomActionButtons extends StatelessWidget {
   }
 
   Widget _buildOrganizerButtons(BuildContext context) {
-    final now = DateTime.now();
-
     return Column(
       children: [
-        // Кнопка начала игры
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: room.status == RoomStatus.planned
-                ? onStartGameWithConfirmation
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: _buildStartGameButtonText(now),
-          ),
-        ),
-        const SizedBox(height: AppSizes.smallSpace),
-
-        // Кнопка завершения игры
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: room.status == RoomStatus.active && room.canBeEndedManually
-                ? onEndGameWithConfirmation
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: Text(
-              room.status == RoomStatus.active && !room.canBeEndedManually
-                  ? 'Завершить игру (через ${room.startTime.add(const Duration(hours: 1)).difference(DateTime.now()).inMinutes} мин)'
-                  : AppStrings.endGame,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+        // Кнопка отмены игры - только для запланированных игр
+        if (room.status == RoomStatus.planned) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: GameTimeUtils.canCancelGame(room)
+                  ? () => onUpdateRoomStatus(RoomStatus.cancelled)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                GameTimeUtils.canCancelGame(room)
+                    ? AppStrings.cancelGame
+                    : 'Отмена заблокирована (все команды заполнены)',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
           ),
-        ),
-        const SizedBox(height: AppSizes.smallSpace),
-
-        // Кнопка отмены игры
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: room.status == RoomStatus.planned
-                ? () => onUpdateRoomStatus(RoomStatus.cancelled)
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: const Text(
-              AppStrings.cancelGame,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
+        ],
       ],
-    );
-  }
-
-  Widget _buildStartGameButtonText(DateTime now) {
-    if (isJoining) {
-      return const SizedBox(
-        height: 20,
-        width: 20,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-        ),
-      );
-    }
-
-    final allowedStartTime = room.startTime.add(const Duration(minutes: 5));
-
-    if (now.isBefore(allowedStartTime)) {
-      final remainingMinutes = allowedStartTime.difference(now).inMinutes;
-      final remainingSeconds = allowedStartTime.difference(now).inSeconds % 60;
-
-      return Text(
-        'Начать игру (через ${remainingMinutes}:${remainingSeconds.toString().padLeft(2, '0')})',
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      );
-    }
-
-    return const Text(
-      AppStrings.startGame,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
-      ),
     );
   }
 

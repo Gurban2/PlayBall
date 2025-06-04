@@ -493,17 +493,17 @@ class _SearchGamesScreenState extends ConsumerState<SearchGamesScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: room.effectiveStatus == RoomStatus.active
-                          ? AppColors.primary
-                          : room.effectiveStatus == RoomStatus.planned
-                              ? AppColors.secondary
-                              : Colors.grey,
+                      color: room.status == RoomStatus.active
+                          ? AppColors.success
+                          : room.status == RoomStatus.planned
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      room.effectiveStatus == RoomStatus.active
+                      room.status == RoomStatus.active
                           ? 'Активна'
-                          : room.effectiveStatus == RoomStatus.planned
+                          : room.status == RoomStatus.planned
                               ? 'Запланирована'
                               : 'Завершена',
                       style: const TextStyle(

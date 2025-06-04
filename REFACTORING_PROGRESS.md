@@ -99,7 +99,7 @@
 
 #### Rooms модуль:
 - ✅ room_service.dart - импорты исправлены
-- ✅ room_screen_refactored.dart - импорты исправлены
+- ✅ наroom_screen_refactored.dart - импорты исправлены
 - ✅ search_games_screen.dart - импорты исправлены
 
 #### Profile модуль:

@@ -48,7 +48,7 @@ class AppTextStyles {
     fontSize: 20,
     fontWeight: FontWeight.w600,
     fontFamily: 'Arial',
-    color: AppColors.text,
+    color: Color.fromARGB(255, 231, 231, 231),
     letterSpacing: 0.2,
   );
   

@@ -33,6 +33,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    
+    // Автоматически обновляем статусы игр при загрузке экрана
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateGameStatuses();
+    });
   }
 
   @override
@@ -245,13 +250,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: room.effectiveStatus == RoomStatus.active
+                          color: room.status == RoomStatus.active
                               ? AppColors.primary
                               : AppColors.secondary,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          room.effectiveStatus == RoomStatus.active
+                          room.status == RoomStatus.active
                               ? AppStrings.active
                               : AppStrings.planned,
                           style: const TextStyle(
@@ -298,7 +303,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${room.startTime.day}.${room.startTime.month}.${room.startTime.year} ${room.startTime.hour}:${room.startTime.minute.toString().padLeft(2, '0')}',
+                        'Начало: ${room.startTime.day}.${room.startTime.month}.${room.startTime.year} ${room.startTime.hour}:${room.startTime.minute.toString().padLeft(2, '0')}',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time_filled,
+                        size: AppSizes.smallIconSize,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Окончание: ${room.endTime.day}.${room.endTime.month}.${room.endTime.year} ${room.endTime.hour}:${room.endTime.minute.toString().padLeft(2, '0')}',
                         style: const TextStyle(color: AppColors.textSecondary),
                       ),
                     ],
@@ -756,6 +776,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
         return 'Игрок';
       default:
         return 'Неизвестная роль';
+    }
+  }
+
+  Future<void> _updateGameStatuses() async {
+    try {
+      final roomService = ref.read(roomServiceProvider);
+      
+      // Автоматически запускаем запланированные игры
+      await roomService.autoStartScheduledGames();
+      
+      // Автоматически завершаем активные игры
+      await roomService.autoCompleteExpiredGames();
+      
+      // Отменяем просроченные запланированные игры
+      await roomService.autoCancelExpiredPlannedGames();
+      
+      print('✅ Статусы игр обновлены автоматически');
+    } catch (e) {
+      print('❌ Ошибка обновления статусов игр: $e');
     }
   }
 } 

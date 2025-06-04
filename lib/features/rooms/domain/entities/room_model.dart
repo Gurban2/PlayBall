@@ -28,6 +28,7 @@ class RoomModel {
   final DateTime endTime;
   final String organizerId;
   final List<String> participants;
+  final List<String>? finalParticipants; // Участники на момент начала игры
   final int maxParticipants;
   final RoomStatus status;
   final GameMode gameMode;
@@ -48,6 +49,7 @@ class RoomModel {
     required this.endTime,
     required this.organizerId,
     this.participants = const [],
+    this.finalParticipants,
     required this.maxParticipants,
     this.status = RoomStatus.planned,
     this.gameMode = GameMode.normal,
@@ -67,6 +69,7 @@ class RoomModel {
     DateTime? startTime,
     DateTime? endTime,
     List<String>? participants,
+    List<String>? finalParticipants,
     int? maxParticipants,
     RoomStatus? status,
     GameMode? gameMode,
@@ -86,6 +89,7 @@ class RoomModel {
       endTime: endTime ?? this.endTime,
       organizerId: organizerId,
       participants: participants ?? this.participants,
+      finalParticipants: finalParticipants ?? this.finalParticipants,
       maxParticipants: maxParticipants ?? this.maxParticipants,
       status: status ?? this.status,
       gameMode: gameMode ?? this.gameMode,
@@ -109,6 +113,7 @@ class RoomModel {
       'endTime': Timestamp.fromDate(endTime),
       'organizerId': organizerId,
       'participants': participants,
+      'finalParticipants': finalParticipants,
       'maxParticipants': maxParticipants,
       'status': status.toString().split('.').last,
       'gameMode': gameMode.toString().split('.').last,
@@ -136,6 +141,9 @@ class RoomModel {
           : DateTime.now().add(const Duration(hours: 2)),
       organizerId: map['organizerId'] ?? '',
       participants: List<String>.from(map['participants'] ?? []),
+      finalParticipants: map['finalParticipants'] != null 
+          ? List<String>.from(map['finalParticipants']) 
+          : null,
       maxParticipants: map['maxParticipants'] ?? 0,
       status: _statusFromString(map['status'] as String?),
       gameMode: _gameModeFromString(map['gameMode'] as String?),
@@ -185,44 +193,6 @@ class RoomModel {
   bool get isFull => participants.length >= maxParticipants;
   bool get hasStarted => startTime.isBefore(DateTime.now());
   bool get hasEnded => endTime.isBefore(DateTime.now());
-  
-  // Проверка, должна ли игра считаться активной (за 5 минут до начала)
-  bool get shouldBeActive {
-    final now = DateTime.now();
-    final activationTime = startTime.subtract(const Duration(minutes: 5));
-    return now.isAfter(activationTime) && status == RoomStatus.planned;
-  }
-  
-  // Эффективный статус игры с учетом времени
-  RoomStatus get effectiveStatus {
-    if (status != RoomStatus.planned) {
-      return status;
-    }
-    
-    final now = DateTime.now();
-    final activationTime = startTime.subtract(const Duration(minutes: 5));
-    
-    if (now.isAfter(activationTime)) {
-      return RoomStatus.active;
-    }
-    
-    return RoomStatus.planned;
-  }
-  
-  // Проверка, можно ли завершить матч вручную (прошел минимум 1 час)
-  bool get canBeEndedManually {
-    if (status != RoomStatus.active) return false;
-    final now = DateTime.now();
-    final minimumEndTime = startTime.add(const Duration(hours: 1));
-    return now.isAfter(minimumEndTime);
-  }
-  
-  // Проверка, должен ли матч быть автоматически завершен (прошло 3 часа)
-  bool get shouldBeAutoCompleted {
-    if (status != RoomStatus.active) return false;
-    final now = DateTime.now();
-    return now.isAfter(endTime);
-  }
 
   bool get isNormalMode => gameMode == GameMode.normal;
   bool get isTeamMode => gameMode == GameMode.team_friendly || gameMode == GameMode.tournament;

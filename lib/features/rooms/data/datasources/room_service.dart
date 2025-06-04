@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../../domain/entities/room_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
+import '../../../../core/utils/game_time_utils.dart';
+import '../../../auth/data/datasources/user_service.dart';
 
 class RoomService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -80,9 +82,10 @@ class RoomService {
         .where('location', isEqualTo: location)
         .get();
     
-    // Проверяем конфликт для первого часа с учетом страховочного времени ±5 минут
+    // Проверяем конфликт только по времени начала с учетом страховочного времени ±5 минут
+    // Время окончания не учитываем для избежания ложных конфликтов
     final checkStartTime = startTime.subtract(const Duration(minutes: 5));
-    final checkEndTime = startTime.add(const Duration(hours: 1, minutes: 5));
+    final checkEndTime = startTime.add(const Duration(minutes: 5));
     
     for (final doc in snapshot.docs) {
       final room = RoomModel.fromMap(doc.data());
@@ -90,9 +93,9 @@ class RoomService {
       if (excludeRoomId != null && room.id == excludeRoomId) continue;
       if (room.status != RoomStatus.active && room.status != RoomStatus.planned) continue;
       
-      // Проверяем пересечение первого часа другой игры с учетом страховочного времени
+      // Проверяем пересечение времени начала другой игры с учетом страховочного времени ±5 минут
       final roomCheckStartTime = room.startTime.subtract(const Duration(minutes: 5));
-      final roomCheckEndTime = room.startTime.add(const Duration(hours: 1, minutes: 5));
+      final roomCheckEndTime = room.startTime.add(const Duration(minutes: 5));
       
       if (checkStartTime.isBefore(roomCheckEndTime) && checkEndTime.isAfter(roomCheckStartTime)) {
         return true;
@@ -228,7 +231,7 @@ class RoomService {
   }) async {
     Query query = _firestore
         .collection(_collection)
-        .where('status', isEqualTo: 'planned')
+        .where('status', isEqualTo: 'active')
         .orderBy('createdAt', descending: true)
         .limit(limit);
 
@@ -285,6 +288,24 @@ class RoomService {
     updates['updatedAt'] = Timestamp.now();
     
     await _firestore.collection(_collection).doc(roomId).update(updates);
+    
+    // Если игра завершается вручную, начисляем очки
+    if (status == RoomStatus.completed) {
+      try {
+        // Получаем данные комнаты для доступа к участникам
+        final roomDoc = await _firestore.collection(_collection).doc(roomId).get();
+        if (roomDoc.exists) {
+          final room = RoomModel.fromMap(roomDoc.data()!);
+          final userService = UserService();
+          // Используем finalParticipants если есть, иначе participants
+          final participantsToAward = room.finalParticipants ?? room.participants;
+          await userService.awardPointsToPlayers(participantsToAward);
+          print('🏆 Начислены очки ${participantsToAward.length} игрокам за ручное завершение игры "${room.title}"');
+        }
+      } catch (e) {
+        print('❌ Ошибка начисления очков при ручном завершении игры $roomId: $e');
+      }
+    }
   }
 
   // Завершение игры
@@ -365,38 +386,50 @@ class RoomService {
             .toList());
   }
 
-  // Автоматическое завершение матчей, которые длятся более 3 часов
+  // Автоматическое завершение матчей, которые достигли времени окончания
   Future<void> autoCompleteExpiredGames() async {
-    final now = DateTime.now();
-    
-    // Ищем активные игры, которые должны быть завершены
+    // Ищем активные игры
     final snapshot = await _firestore
         .collection(_collection)
         .where('status', isEqualTo: 'active')
-        .where('endTime', isLessThan: Timestamp.fromDate(now))
         .get();
     
     final batch = _firestore.batch();
+    int completedCount = 0;
     
     for (final doc in snapshot.docs) {
-      batch.update(doc.reference, {
-        'status': RoomStatus.completed.toString().split('.').last,
-        'updatedAt': Timestamp.now(),
-      });
+      final room = RoomModel.fromMap(doc.data());
+      
+      // Используем новую утилиту для проверки (теперь проверяет endTime)
+      if (GameTimeUtils.shouldAutoCompleteGame(room)) {
+        batch.update(doc.reference, {
+          'status': RoomStatus.completed.toString().split('.').last,
+          'updatedAt': Timestamp.now(),
+        });
+        completedCount++;
+        print('🎮 Автоматически завершена игра "${room.title}" в запланированное время');
+        
+        // Начисляем очки игрокам (используем finalParticipants если есть, иначе participants)
+        try {
+          final userService = UserService();
+          final participantsToAward = room.finalParticipants ?? room.participants;
+          await userService.awardPointsToPlayers(participantsToAward);
+          print('🏆 Начислены очки ${participantsToAward.length} игрокам за игру "${room.title}"');
+        } catch (e) {
+          print('❌ Ошибка начисления очков для игры ${room.id}: $e');
+        }
+      }
     }
     
-    if (snapshot.docs.isNotEmpty) {
+    if (completedCount > 0) {
       await batch.commit();
-      print('🎮 Автоматически завершено ${snapshot.docs.length} матчей');
+      print('🎮 Автоматически завершено $completedCount матчей в запланированное время');
     }
   }
 
   // Автоматическая отмена просроченных запланированных игр
   Future<void> autoCancelExpiredPlannedGames() async {
-    final now = DateTime.now();
-    final expiredThreshold = now.subtract(const Duration(hours: 24));
-    
-    // Получаем все запланированные игры и фильтруем на клиенте
+    // Получаем все запланированные игры
     final snapshot = await _firestore
         .collection(_collection)
         .where('status', isEqualTo: 'planned')
@@ -406,22 +439,55 @@ class RoomService {
     int cancelledCount = 0;
     
     for (final doc in snapshot.docs) {
-      final data = doc.data();
-      final startTime = (data['startTime'] as Timestamp).toDate();
+      final room = RoomModel.fromMap(doc.data());
       
-      // Проверяем на клиенте, просрочена ли игра
-      if (startTime.isBefore(expiredThreshold)) {
+      // Используем новую утилиту для проверки
+      if (GameTimeUtils.isPlannedGameExpired(room)) {
         batch.update(doc.reference, {
           'status': RoomStatus.cancelled.toString().split('.').last,
           'updatedAt': Timestamp.now(),
         });
         cancelledCount++;
+        print('🗑️ Автоматически отменена просроченная игра "${room.title}"');
       }
     }
     
     if (cancelledCount > 0) {
       await batch.commit();
       print('🗑️ Автоматически отменено $cancelledCount просроченных запланированных игр');
+    }
+  }
+
+  // Автоматический запуск запланированных игр в назначенное время
+  Future<void> autoStartScheduledGames() async {
+    // Ищем запланированные игры
+    final snapshot = await _firestore
+        .collection(_collection)
+        .where('status', isEqualTo: 'planned')
+        .get();
+    
+    final batch = _firestore.batch();
+    int startedCount = 0;
+    
+    for (final doc in snapshot.docs) {
+      final room = RoomModel.fromMap(doc.data());
+      
+      // Используем утилиту для проверки автоматического запуска
+      if (GameTimeUtils.shouldAutoStartGame(room)) {
+        // Сохраняем текущих участников как finalParticipants на момент старта
+        batch.update(doc.reference, {
+          'status': RoomStatus.active.toString().split('.').last,
+          'finalParticipants': room.participants, // Фиксируем участников на момент старта
+          'updatedAt': Timestamp.now(),
+        });
+        startedCount++;
+        print('🚀 Автоматически запущена игра "${room.title}" в назначенное время');
+      }
+    }
+    
+    if (startedCount > 0) {
+      await batch.commit();
+      print('🚀 Автоматически запущено $startedCount матчей в назначенное время');
     }
   }
 } 

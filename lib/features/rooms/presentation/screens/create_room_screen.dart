@@ -26,6 +26,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   final _team2NameController = TextEditingController();
 
   DateTime _startTime = DateTime.now().add(const Duration(hours: 1));
+  DateTime _endTime = DateTime.now().add(const Duration(hours: 3));
   GameMode _selectedGameMode = GameMode.normal;
   bool _isLoading = false;
   Uint8List? _selectedImageBytes;
@@ -193,9 +194,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   }
 
   Future<void> _selectDateTime(bool isStartTime) async {
+    final DateTime initialDate = isStartTime ? _startTime : _endTime;
     final DateTime? pickedDate = await showDatePicker(
       context: context,
-      initialDate: _startTime,
+      initialDate: initialDate,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
@@ -203,7 +205,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     if (pickedDate != null) {
       final TimeOfDay? pickedTime = await showTimePicker(
         context: context,
-        initialTime: TimeOfDay.fromDateTime(_startTime),
+        initialTime: TimeOfDay.fromDateTime(initialDate),
       );
 
       if (pickedTime != null) {
@@ -216,29 +218,54 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         );
 
         setState(() {
-          _startTime = newDateTime;
+          if (isStartTime) {
+            _startTime = newDateTime;
+            // Автоматически обновляем время окончания, если оно меньше нового времени начала
+            if (_endTime.isBefore(_startTime.add(const Duration(hours: 1)))) {
+              _endTime = _startTime.add(const Duration(hours: 2));
+            }
+          } else {
+            _endTime = newDateTime;
+          }
         });
       }
     }
   }
 
   Future<void> _createRoom() async {
-    if (!_formKey.currentState!.validate()) {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Выберите локацию')),
+      );
       return;
     }
 
-    final userAsync = ref.read(currentUserProvider);
-    final user = userAsync.value;
-
-    if (user == null) {
+    // Валидация времени
+    if (_endTime.isBefore(_startTime.add(const Duration(minutes: 30)))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ошибка: пользователь не найден'),
+          content: Text('Время окончания должно быть минимум на 30 минут позже времени начала'),
           backgroundColor: AppColors.error,
         ),
       );
       return;
     }
+
+    // Проверяем конфликт времени
+    final conflict = await ref.read(roomServiceProvider).checkLocationConflict(
+      location: _selectedLocation!,
+      startTime: _startTime,
+      endTime: _endTime,
+    );
+    
+    if (conflict) {
+      _showConflictDialog();
+      return;
+    }
+
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return;
 
     if (user.role == UserRole.user) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -292,7 +319,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         description: _descriptionController.text.trim(),
         location: _selectedLocation ?? '',
         startTime: _startTime,
-        endTime: _startTime.add(const Duration(hours: 3)),
+        endTime: _endTime,
         organizerId: user.id,
         maxParticipants: _selectedGameMode.isTeamMode 
             ? int.parse(_maxTeamsController.text) * 6 // Автоматически рассчитываем участников (6 игроков на команду)
@@ -508,6 +535,30 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           ],
         );
       },
+    );
+  }
+
+  void _showConflictDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: AppColors.warning),
+            const SizedBox(width: 8),
+            const Text('Конфликт времени'),
+          ],
+        ),
+        content: const Text(
+          'В выбранной локации уже запланирована игра на это время. Выберите другое время или локацию.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Понятно'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -805,9 +856,43 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                     ),
                                   ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: () => _selectDateTime(false),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: Colors.grey.shade300),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Время окончания',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${_endTime.day}.${_endTime.month} ${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 16),
                             // Информация о длительности матча
                             Container(
                               padding: const EdgeInsets.all(12),
@@ -831,7 +916,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         const Text(
-                                          'Длительность матча',
+                                          'Время проведения игры',
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
@@ -840,7 +925,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          'Матч автоматически завершается через 3 часа или может быть завершен вручную через 1 час после начала',
+                                          'Игра автоматически начинается в указанное время начала и завершается в указанное время окончания.',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: AppColors.primary.withOpacity(0.8),
