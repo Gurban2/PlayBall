@@ -5,6 +5,7 @@ import '../../data/datasources/auth_service.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../core/errors/error_handler.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -68,23 +69,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ref.invalidate(userRoomsProvider);
       
       // Показываем сообщение об успешной регистрации
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Регистрация успешна! Теперь войдите в свой аккаунт'),
-          backgroundColor: AppColors.success,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      ErrorHandler.showSuccess(context, 'Регистрация успешна! Теперь войдите в свой аккаунт');
       
       // Выходим из только что созданного аккаунта и перенаправляем на вход
       await _authService.signOut();
       if (!mounted) return;
       context.go('${AppRoutes.login}?email=${Uri.encodeComponent(_emailController.text.trim())}');
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Ошибка регистрации: ${e.toString()}';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ErrorHandler.showError(context, e);
+      }
     }
   }
 
@@ -95,8 +92,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/schedule/schedule_bg.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: AppSizes.screenPadding,
@@ -132,10 +135,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      color: AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: AppColors.primary.withOpacity(0.3),
+                        color: AppColors.primary.withValues(alpha: 0.3),
                         width: 1,
                       ),
                     ),
@@ -272,6 +275,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 } 

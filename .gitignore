@@ -66,3 +66,6 @@ coverage/
 # Firebase local configuration
 # google-services.json
 # GoogleService-Info.plist 
+
+# Environment variables (содержит AWS ключи)
+.env

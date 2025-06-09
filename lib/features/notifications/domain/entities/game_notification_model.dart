@@ -12,6 +12,10 @@ enum GameNotificationType {
   playerLeft,       // Игрок покинул игру
   teamFormed,       // Команда сформирована
   teamChanged,      // Изменения в команде
+  evaluationRequired, // Требуется оценка игроков
+  winnerSelectionRequired, // Требуется выбор команды-победителя
+  playerEvaluated,  // Игрок получил оценку
+  activityCheck,    // Проверка активности команды
 }
 
 /// Модель уведомлений о играх
@@ -226,6 +230,89 @@ class GameNotificationModel {
     );
   }
 
+  /// Уведомление о необходимости оценки игроков
+  factory GameNotificationModel.evaluationRequired({
+    required String id,
+    required String roomId,
+    required String roomTitle,
+    required String organizerId,
+    required String organizerName,
+    required List<String> recipientIds,
+    required String gameMode,
+  }) {
+    return GameNotificationModel(
+      id: id,
+      roomId: roomId,
+      roomTitle: roomTitle,
+      organizerId: organizerId,
+      organizerName: organizerName,
+      recipientIds: recipientIds,
+      type: GameNotificationType.evaluationRequired,
+      title: '⭐ Оцените игроков',
+      message: 'Игра "$roomTitle" завершена. Пожалуйста, оцените игроков.',
+      createdAt: DateTime.now(),
+      additionalData: {'gameMode': gameMode},
+    );
+  }
+
+  /// Уведомление о необходимости выбора команды-победителя
+  factory GameNotificationModel.winnerSelectionRequired({
+    required String id,
+    required String roomId,
+    required String roomTitle,
+    required String organizerId,
+    required String organizerName,
+    required List<String> recipientIds,
+    required bool isTeamMode,
+    required int playersToSelect,
+  }) {
+    return GameNotificationModel(
+      id: id,
+      roomId: roomId,
+      roomTitle: roomTitle,
+      organizerId: organizerId,
+      organizerName: organizerName,
+      recipientIds: recipientIds,
+      type: GameNotificationType.winnerSelectionRequired,
+      title: '🏆 Выберите команду-победителя',
+      message: 'Игра "$roomTitle" завершена. Выберите команду-победителя и оцените игроков.',
+      createdAt: DateTime.now(),
+      additionalData: {
+        'isTeamMode': isTeamMode.toString(),
+        'playersToSelect': playersToSelect.toString(),
+      },
+    );
+  }
+
+  /// Уведомление о проверке активности команды
+  factory GameNotificationModel.activityCheck({
+    required String id,
+    required String teamId,
+    required String teamName,
+    required String organizerId,
+    required String organizerName,
+    required List<String> recipientIds,
+    required String checkId,
+  }) {
+    return GameNotificationModel(
+      id: id,
+      roomId: teamId, // Используем teamId как roomId
+      roomTitle: teamName, // Используем teamName как roomTitle
+      organizerId: organizerId,
+      organizerName: organizerName,
+      recipientIds: recipientIds,
+      type: GameNotificationType.activityCheck,
+      title: '⚡ Проверка готовности команды',
+      message: '$organizerName спрашивает, все ли готовы сегодня к игре? Нажмите "Готов", чтобы показать свою активность.',
+      createdAt: DateTime.now(),
+      additionalData: {
+        'checkId': checkId,
+        'teamId': teamId,
+        'teamName': teamName,
+      },
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -292,6 +379,14 @@ class GameNotificationModel {
         return '👥';
       case GameNotificationType.teamChanged:
         return '🔄';
+      case GameNotificationType.evaluationRequired:
+        return '⭐';
+      case GameNotificationType.winnerSelectionRequired:
+        return '🏆';
+      case GameNotificationType.playerEvaluated:
+        return '⭐';
+      case GameNotificationType.activityCheck:
+        return '⚡';
     }
   }
 
@@ -318,6 +413,14 @@ class GameNotificationModel {
         return '#3F51B5'; // индиго
       case GameNotificationType.teamChanged:
         return '#FF5722'; // оранжево-красный
+      case GameNotificationType.evaluationRequired:
+        return '#FFC107'; // желтый (золотой)
+      case GameNotificationType.winnerSelectionRequired:
+        return '#FF6F00'; // оранжевый (для выбора победителя)
+      case GameNotificationType.playerEvaluated:
+        return '#FFC107'; // желтый (золотой)
+      case GameNotificationType.activityCheck:
+        return '#9E9E9E'; // серый (для проверки активности)
     }
   }
 

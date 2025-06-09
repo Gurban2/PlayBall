@@ -1,209 +1,283 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/constants.dart';
+import '../../../core/providers.dart';
 import '../../../features/auth/domain/entities/user_model.dart';
+import '../dialogs/player_profile_dialog.dart';
 
-class TeamMemberCard extends StatelessWidget {
+class TeamMemberCard extends ConsumerStatefulWidget {
   final UserModel member;
-  final bool isOwner;
-  final VoidCallback? onTap;
-  final VoidCallback? onRemove;
+  final bool showFriendButton;
+  final bool isCompact;
 
   const TeamMemberCard({
     super.key,
     required this.member,
-    required this.isOwner,
-    this.onTap,
-    this.onRemove,
+    this.showFriendButton = true,
+    this.isCompact = false,
   });
 
   @override
+  ConsumerState<TeamMemberCard> createState() => _TeamMemberCardState();
+}
+
+class _TeamMemberCardState extends ConsumerState<TeamMemberCard> {
+  @override
   Widget build(BuildContext context) {
+    final currentUser = ref.read(currentUserProvider).value;
+    final isOwnProfile = currentUser?.id == widget.member.id;
+
     return Card(
-      margin: const EdgeInsets.only(bottom: AppSizes.smallSpace),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSizes.cardRadius),
-        child: Padding(
-          padding: AppSizes.cardPadding,
-          child: Row(
-            children: [
-              // Аватар
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                backgroundImage: member.photoUrl != null 
-                    ? NetworkImage(member.photoUrl!) 
-                    : null,
-                child: member.photoUrl == null 
-                    ? Text(
-                        _getInitials(member.name),
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      )
-                    : null,
-              ),
-              
-              const SizedBox(width: AppSizes.mediumSpace),
-              
-              // Информация об игроке
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Имя и роль
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            member.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (member.role == UserRole.organizer)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.organizerRole,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Орг',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 2),
-                    
-                    // Статистика
-                    Text(
-                      'Рейтинг: ${member.rating.toStringAsFixed(1)} • ${member.gamesPlayed} игр',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    
-                    // Информация о команде
-                    if (member.teamName != null) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.groups,
-                            size: 12,
-                            color: AppColors.secondary,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              member.teamName!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.secondary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (member.isTeamCaptain)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 1,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.warning,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                'К',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              
-              const SizedBox(width: AppSizes.smallSpace),
-              
-              // Кнопки управления
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (isOwner)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'Капитан',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    )
-                  else if (onRemove != null)
-                    GestureDetector(
-                      onTap: onRemove,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
-                          color: AppColors.error,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: widget.isCompact ? 18 : 24,
+          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+          backgroundImage: widget.member.photoUrl != null 
+              ? NetworkImage(widget.member.photoUrl!) 
+              : null,
+          child: widget.member.photoUrl == null 
+              ? Text(
+                  _getInitials(widget.member.name), 
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: widget.isCompact ? 12 : 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              : null,
+        ),
+        title: Text(
+          widget.member.name,
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: widget.isCompact ? 14 : 16,
           ),
+        ),
+        subtitle: widget.isCompact 
+            ? null 
+            : Text('${widget.member.gamesPlayed} игр'),
+        onTap: () => PlayerProfileDialog.show(
+          context, 
+          ref, 
+          widget.member.id, 
+          playerName: widget.member.name,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Иконка добавления в друзья (только если это не свой профиль)
+            if (widget.showFriendButton && !isOwnProfile && currentUser != null) ...[
+              FutureBuilder<String>(
+                future: ref.read(userServiceProvider).getFriendshipStatus(
+                  currentUser!.id, 
+                  widget.member.id,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return SizedBox(
+                      width: widget.isCompact ? 12 : 16,
+                      height: widget.isCompact ? 12 : 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: widget.isCompact ? 1.5 : 2,
+                      ),
+                    );
+                  }
+                  
+                  final friendshipStatus = snapshot.data ?? 'none';
+                  IconData icon;
+                  Color color;
+                  String tooltip;
+                  
+                  switch (friendshipStatus) {
+                    case 'friends':
+                      icon = Icons.person_remove;
+                      color = AppColors.error;
+                      tooltip = 'Удалить из друзей';
+                      break;
+                    case 'request_sent':
+                      icon = Icons.schedule;
+                      color = AppColors.warning;
+                      tooltip = 'Запрос отправлен';
+                      break;
+                    case 'request_received':
+                      icon = Icons.person_add_alt;
+                      color = AppColors.success;
+                      tooltip = 'Ответить на запрос';
+                      break;
+                    case 'none':
+                    default:
+                      icon = Icons.person_add;
+                      color = AppColors.primary;
+                      tooltip = 'Добавить в друзья';
+                      break;
+                  }
+                  
+                  return IconButton(
+                    onPressed: () => _handleFriendAction(friendshipStatus),
+                    icon: Icon(
+                      icon, 
+                      size: widget.isCompact ? 16 : 18,
+                    ),
+                    color: color,
+                    tooltip: tooltip,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(
+                      minWidth: widget.isCompact ? 28 : 32,
+                      minHeight: widget.isCompact ? 28 : 32,
+                    ),
+                  );
+                },
+              ),
+              SizedBox(width: widget.isCompact ? 2 : 4),
+            ],
+            Icon(
+              Icons.arrow_forward_ios,
+              size: widget.isCompact ? 12 : 16,
+              color: AppColors.textSecondary,
+            ),
+          ],
         ),
       ),
     );
   }
 
   String _getInitials(String name) {
-    final parts = name.split(' ');
+    if (name.isEmpty) return '?';
+    final parts = name.trim().split(' ');
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    } else if (name.isNotEmpty) {
-      return name[0].toUpperCase();
     }
-    return '?';
+    return name[0].toUpperCase();
+  }
+
+  Future<void> _handleFriendAction(String friendshipStatus) async {
+    try {
+      final currentUser = ref.read(currentUserProvider).value;
+      if (currentUser == null) return;
+
+      final userService = ref.read(userServiceProvider);
+
+      switch (friendshipStatus) {
+        case 'friends':
+          await userService.removeFriend(currentUser.id, widget.member.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${widget.member.name} удален из друзей'),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+          break;
+
+        case 'none':
+          await userService.sendFriendRequest(currentUser.id, widget.member.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Запрос дружбы отправлен ${widget.member.name}'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+          break;
+
+        case 'request_sent':
+          await userService.cancelFriendRequest(currentUser.id, widget.member.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Запрос дружбы ${widget.member.name} отменен'),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+          break;
+
+        case 'request_received':
+          _showFriendRequestDialog();
+          break;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showFriendRequestDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Запрос дружбы от ${widget.member.name}'),
+        content: Text('${widget.member.name} хочет добавить вас в друзья'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отклонить'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Принять'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      try {
+        final userService = ref.read(userServiceProvider);
+        final currentUser = ref.read(currentUserProvider).value;
+        if (currentUser == null) return;
+        
+        final requests = await userService.getIncomingFriendRequests(currentUser.id);
+        final request = requests.firstWhere(
+          (r) => r.fromUserId == widget.member.id,
+          orElse: () => throw Exception('Запрос не найден'),
+        );
+
+        if (result) {
+          await userService.acceptFriendRequest(request.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${widget.member.name} добавлен в друзья'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        } else {
+          await userService.declineFriendRequest(request.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Запрос дружбы ${widget.member.name} отклонен'),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    }
   }
 } 

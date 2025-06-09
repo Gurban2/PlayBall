@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/constants.dart';
-import '../../../../core/router/app_router.dart';
+import '../../../../core/errors/error_handler.dart';
+import '../../../../core/providers.dart';
 import '../../../../core/utils/game_time_utils.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
@@ -190,12 +192,7 @@ class RoomActionButtons extends StatelessWidget {
   void _handleSelectTeam(BuildContext context) {
     // Дополнительная проверка для командного режима
     if (room.isTeamMode && user.role == UserRole.user && !room.participants.contains(user.id)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Вы можете участвовать в командных играх только через организатора вашей команды'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+             ErrorHandler.showWarning(context, 'Вы можете участвовать в командных играх только через организатора вашей команды');
       return;
     }
     onSelectTeam();

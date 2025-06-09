@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/constants.dart';
 import '../../../features/rooms/domain/entities/room_model.dart';
+import 'unified_dialogs.dart';
 
 class ConfirmationDialog extends StatelessWidget {
   final String title;
@@ -92,31 +93,13 @@ class ConfirmationDialog extends StatelessWidget {
     );
   }
 
-  // Статические методы для быстрого создания диалогов
+  // Упрощенные статические методы с использованием UnifiedDialogs
   static Future<bool?> showStartEarly(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => ConfirmationDialog(
-        title: 'Начать игру раньше?',
-        message: AppStrings.confirmStartEarly,
-        confirmText: 'Начать',
-        icon: Icons.play_arrow,
-        confirmColor: AppColors.success,
-      ),
-    );
+    return UnifiedDialogs.showStartGameEarly(context: context);
   }
 
   static Future<bool?> showEndEarly(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => ConfirmationDialog(
-        title: 'Завершить игру раньше?',
-        message: AppStrings.confirmEndEarly,
-        confirmText: 'Завершить',
-        icon: Icons.stop,
-        confirmColor: AppColors.primary,
-      ),
-    );
+    return UnifiedDialogs.showEndGameEarly(context: context);
   }
 
   static void showLocationConflict(
@@ -127,146 +110,19 @@ class ConfirmationDialog extends StatelessWidget {
     final timeFormat = '${plannedStartTime.hour}:${plannedStartTime.minute.toString().padLeft(2, '0')}';
     
     String message = '${AppStrings.locationConflict} ($timeFormat)';
-    String conflictDetails = '';
+    String? additionalInfo;
     if (conflictingRoom != null) {
       final conflictEndTime = '${conflictingRoom.endTime.hour}:${conflictingRoom.endTime.minute.toString().padLeft(2, '0')}';
-      conflictDetails = 'Зал будет свободен в $conflictEndTime';
+      additionalInfo = 'Зал будет свободен в $conflictEndTime';
     }
 
-    showDialog(
+    UnifiedDialogs.showWarning(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.warning_amber,
-                color: AppColors.warning,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Зал занят',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.text,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              message,
-              style: const TextStyle(
-                fontSize: 16,
-                color: AppColors.textSecondary,
-                height: 1.4,
-              ),
-            ),
-            if (conflictDetails.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.schedule,
-                      color: AppColors.success,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        conflictDetails,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppColors.success,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.lightbulb_outline,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Дождитесь своего времени или выберите другую локацию',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.warning,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
-              'Понятно',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
+      title: 'Зал занят',
+      message: message,
+      confirmText: 'Изменить время',
+      cancelText: 'Понятно',
+      additionalInfo: additionalInfo,
     );
   }
 } 

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../domain/entities/team_invitation_model.dart';
-import '../../../auth/domain/entities/user_model.dart';
+
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
+
+import '../../domain/entities/team_invitation_model.dart';
+import '../../../auth/domain/entities/user_model.dart';
 
 class TeamInvitationsScreen extends ConsumerStatefulWidget {
   const TeamInvitationsScreen({super.key});
@@ -82,12 +84,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
     } catch (e) {
       debugPrint('❌ Ошибка загрузки приглашений: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     } finally {
       if (mounted) {
@@ -245,7 +242,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
                   backgroundImage: invitation.fromUserPhotoUrl != null
                       ? NetworkImage(invitation.fromUserPhotoUrl!)
                       : null,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   child: invitation.fromUserPhotoUrl == null
                       ? Text(
                           _getInitials(invitation.fromUserName),
@@ -289,7 +286,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.1),
+                  color: AppColors.warning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -377,7 +374,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
                   backgroundImage: invitation.toUserPhotoUrl != null
                       ? NetworkImage(invitation.toUserPhotoUrl!)
                       : null,
-                  backgroundColor: AppColors.secondary.withOpacity(0.1),
+                  backgroundColor: AppColors.secondary.withValues(alpha: 0.1),
                   child: invitation.toUserPhotoUrl == null
                       ? Text(
                           _getInitials(invitation.toUserName),
@@ -414,7 +411,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.1),
+                    color: AppColors.warning.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -436,7 +433,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.1),
+                  color: AppColors.warning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -512,12 +509,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
       await teamService.acceptTeamInvitation(invitation.id);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Вы присоединились к команде "${invitation.teamName}"!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.teamJoined(context, invitation.teamName);
         
         // Обновляем список приглашений
         await _loadInvitations();
@@ -527,12 +519,7 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -543,24 +530,14 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
       await teamService.declineTeamInvitation(invitation.id);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Приглашение отклонено'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.rejected(context, 'Приглашение');
         
         // Обновляем список приглашений
         await _loadInvitations();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -571,24 +548,14 @@ class _TeamInvitationsScreenState extends ConsumerState<TeamInvitationsScreen>
       await teamService.cancelTeamInvitation(invitation.teamId, invitation.toUserId);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Приглашение отменено'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.cancelled(context, 'Приглашение');
         
         // Обновляем список приглашений
         await _loadInvitations();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }

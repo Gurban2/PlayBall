@@ -1,15 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 import '../../domain/entities/game_notification_model.dart';
 import '../../../rooms/domain/entities/room_model.dart';
 import '../../../auth/domain/entities/user_model.dart';
+import '../../../../shared/services/base_notification_service.dart';
+import '../../../../shared/factories/notification_factory.dart';
 
 /// Сервис для управления уведомлениями о играх
-class GameNotificationService {
-  static const String _collectionName = 'game_notifications';
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final Uuid _uuid = const Uuid();
+class GameNotificationService extends BaseNotificationService {
+  @override
+  String get collectionName => 'game_notifications';
 
   /// Отправить уведомление о создании новой игры всем пользователям в радиусе
   Future<void> notifyGameCreated({
@@ -17,47 +17,21 @@ class GameNotificationService {
     required UserModel organizer,
     List<String>? specificRecipients,
   }) async {
-    try {
-      // Получаем список получателей
-      List<String> recipientIds = specificRecipients ?? 
-          await _getNearbyPlayersIds(room.location ?? '');
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.gameCreated(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-        scheduledDateTime: room.startTime,
-        location: room.location ?? 'Не указано',
-      );
-
-      // Создаем отдельное уведомление для каждого получателя
-      final batch = _firestore.batch();
-      
-      for (String recipientId in recipientIds) {
-        final personalNotification = notification.copyWith(
-          id: _uuid.v4(),
-          recipientIds: [recipientId],
-        );
-        
-        final docRef = _firestore
-            .collection(_collectionName)
-            .doc(personalNotification.id);
-        
-        batch.set(docRef, personalNotification.toMap());
-      }
-
-      await batch.commit();
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений о создании игры "${room.title}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений о создании игры: $e');
-      rethrow;
+    final recipientIds = specificRecipients ?? await _getNearbyPlayersIds(room.location);
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет получателей для уведомления о создании игры "${room.title}"');
+      return;
     }
+
+    final notification = NotificationFactory.gameCreated(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'создании игры "${room.title}"');
   }
 
   /// Отправить уведомление об изменениях в игре участникам
@@ -66,28 +40,22 @@ class GameNotificationService {
     required UserModel organizer,
     required String changes,
   }) async {
-    try {
-      final recipientIds = room.participants.where((id) => id != organizer.id).toList();
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.gameUpdated(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-        changes: changes,
-      );
-
-      await _sendNotificationToUsers(notification, recipientIds);
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений об изменении игры "${room.title}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений об изменении игры: $e');
-      rethrow;
+    final recipientIds = room.participants.where((id) => id != organizer.id).toList();
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет участников для уведомления об изменении игры "${room.title}"');
+      return;
     }
+
+    final notification = NotificationFactory.gameUpdated(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+      changes: changes,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'изменении игры "${room.title}"');
   }
 
   /// Отправить уведомление о скором начале игры
@@ -96,28 +64,22 @@ class GameNotificationService {
     required UserModel organizer,
     required int minutesLeft,
   }) async {
-    try {
-      final recipientIds = room.participants;
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.gameStarting(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-        minutesLeft: minutesLeft,
-      );
-
-      await _sendNotificationToUsers(notification, recipientIds);
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений о скором начале игры "${room.title}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений о скором начале игры: $e');
-      rethrow;
+    final recipientIds = room.participants;
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет участников для уведомления о скором начале игры "${room.title}"');
+      return;
     }
+
+    final notification = NotificationFactory.gameStarting(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+      minutesLeft: minutesLeft,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'скором начале игры "${room.title}"');
   }
 
   /// Отправить уведомление о начале игры
@@ -125,27 +87,21 @@ class GameNotificationService {
     required RoomModel room,
     required UserModel organizer,
   }) async {
-    try {
-      final recipientIds = room.participants;
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.gameStarted(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-      );
-
-      await _sendNotificationToUsers(notification, recipientIds);
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений о начале игры "${room.title}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений о начале игры: $e');
-      rethrow;
+    final recipientIds = room.participants;
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет участников для уведомления о начале игры "${room.title}"');
+      return;
     }
+
+    final notification = NotificationFactory.gameStarted(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'начале игры "${room.title}"');
   }
 
   /// Отправить уведомление о завершении игры
@@ -154,28 +110,22 @@ class GameNotificationService {
     required UserModel organizer,
     String? winnerTeamName,
   }) async {
-    try {
-      final recipientIds = room.participants;
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.gameEnded(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-        winnerTeamName: winnerTeamName,
-      );
-
-      await _sendNotificationToUsers(notification, recipientIds);
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений о завершении игры "${room.title}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений о завершении игры: $e');
-      rethrow;
+    final recipientIds = room.participants;
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет участников для уведомления о завершении игры "${room.title}"');
+      return;
     }
+
+    final notification = NotificationFactory.gameEnded(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+      winnerTeamName: winnerTeamName,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'завершении игры "${room.title}"');
   }
 
   /// Отправить уведомление об отмене игры
@@ -184,28 +134,22 @@ class GameNotificationService {
     required UserModel organizer,
     String? reason,
   }) async {
-    try {
-      final recipientIds = room.participants.where((id) => id != organizer.id).toList();
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.gameCancelled(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-        reason: reason,
-      );
-
-      await _sendNotificationToUsers(notification, recipientIds);
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений об отмене игры "${room.title}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений об отмене игры: $e');
-      rethrow;
+    final recipientIds = room.participants.where((id) => id != organizer.id).toList();
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет участников для уведомления об отмене игры "${room.title}"');
+      return;
     }
+
+    final notification = NotificationFactory.gameCancelled(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+      reason: reason,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'отмене игры "${room.title}"');
   }
 
   /// Отправить уведомление о присоединении игрока
@@ -214,181 +158,216 @@ class GameNotificationService {
     required UserModel organizer,
     required UserModel player,
   }) async {
-    try {
-      final recipientIds = room.participants.where((id) => id != player.id).toList();
-      
-      if (recipientIds.isEmpty) return;
-
-      final notification = GameNotificationModel.playerJoined(
-        id: _uuid.v4(),
-        roomId: room.id,
-        roomTitle: room.title,
-        organizerId: organizer.id,
-        organizerName: organizer.name,
-        recipientIds: recipientIds,
-        playerName: player.name,
-      );
-
-      await _sendNotificationToUsers(notification, recipientIds);
-      
-      debugPrint('✅ Отправлено ${recipientIds.length} уведомлений о присоединении игрока "${player.name}"');
-    } catch (e) {
-      debugPrint('❌ Ошибка отправки уведомлений о присоединении игрока: $e');
-      rethrow;
+    final recipientIds = room.participants.where((id) => id != player.id).toList();
+    
+    if (recipientIds.isEmpty) {
+      logWarning('Нет участников для уведомления о присоединении игрока "${player.name}"');
+      return;
     }
+
+    final notification = NotificationFactory.playerJoined(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      player: player,
+      recipientIds: recipientIds,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'присоединении игрока "${player.name}"');
+  }
+
+  /// Отправить уведомление о необходимости оценки игроков
+  Future<void> notifyEvaluationRequired({
+    required RoomModel room,
+    required UserModel organizer,
+  }) async {
+    final recipientIds = room.participants;
+    
+    if (recipientIds.isEmpty) {
+      logWarning('❌ Нет участников для уведомления об оценке в игре "${room.title}"');
+      return;
+    }
+
+    final notification = NotificationFactory.evaluationRequired(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'необходимости оценки игроков');
+  }
+
+  /// Отправить уведомление о необходимости выбора победителя
+  Future<void> notifyWinnerSelectionRequired({
+    required RoomModel room,
+    required UserModel organizer,
+    bool? isTeamMode,
+    int? playersToSelect,
+  }) async {
+    // Уведомление о выборе победителя отправляется только организатору игры
+    final recipientIds = [organizer.id];
+
+    final notification = NotificationFactory.winnerSelectionRequired(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      recipientIds: recipientIds,
+      isTeamMode: isTeamMode,
+      playersToSelect: playersToSelect,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, recipientIds, 'выборе победителей');
+  }
+
+  /// Отправить уведомление игроку о его оценке
+  Future<void> notifyPlayerEvaluated({
+    required RoomModel room,
+    required UserModel organizer,
+    required UserModel evaluatedPlayer,
+    required double rating,
+    required String evaluatorName,
+  }) async {
+    logInfo('Отправляем уведомление об оценке игроку ${evaluatedPlayer.name}');
+
+    final notification = NotificationFactory.playerEvaluated(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      evaluatedPlayer: evaluatedPlayer,
+      rating: rating,
+      evaluatorName: evaluatorName,
+    );
+
+    await _sendSingleNotification(notification, evaluatedPlayer.id, 'оценке игрока ${evaluatedPlayer.name}');
+  }
+
+  /// Отправить уведомления о проверке активности команды
+  Future<void> notifyActivityCheck({
+    required String teamId,
+    required String teamName,
+    required List<String> teamMembers,
+  }) async {
+    logInfo('Отправляем уведомления о проверке активности команды "$teamName"');
+    
+    if (teamMembers.isEmpty) {
+      logWarning('Нет игроков для уведомления о проверке активности команды $teamId');
+      return;
+    }
+
+    final notification = NotificationFactory.activityCheck(
+      id: generateId(),
+      teamId: teamId,
+      teamName: teamName,
+      recipientIds: teamMembers,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, teamMembers, 'проверке активности команды "$teamName"');
+  }
+
+  /// Отправить уведомления о победе команды
+  Future<void> notifyTeamVictory({
+    required RoomModel room,
+    required UserModel organizer,
+    required String winnerTeamName,
+    required List<String> teamMembers,
+  }) async {
+    logInfo('Отправляем уведомления о победе команды "$winnerTeamName"');
+    
+    if (teamMembers.isEmpty) {
+      logWarning('Нет участников команды для уведомления о победе');
+      return;
+    }
+
+    final notification = NotificationFactory.teamVictory(
+      id: generateId(),
+      room: room,
+      organizer: organizer,
+      winnerTeamName: winnerTeamName,
+      teamMembers: teamMembers,
+    );
+
+    await _sendNotificationToMultipleUsers(notification, teamMembers, 'победе команды "$winnerTeamName"');
   }
 
   /// Получить уведомления о играх для пользователя
   Future<List<GameNotificationModel>> getGameNotifications(String userId) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(_collectionName)
-          .where('recipientIds', arrayContains: userId)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .get();
-
-      return querySnapshot.docs
-          .map((doc) => GameNotificationModel.fromMap(doc.data(), doc.id))
-          .toList();
-    } catch (e) {
-      debugPrint('❌ Ошибка получения уведомлений о играх: $e');
-      return [];
-    }
+    final notifications = await getUserNotifications(userId);
+    return notifications
+        .map((data) => GameNotificationModel.fromMap(data, data['id']))
+        .toList();
   }
 
   /// Получить уведомления о играх в реальном времени
   Stream<List<GameNotificationModel>> getGameNotificationsStream(String userId) {
-    return _firestore
-        .collection(_collectionName)
-        .where('recipientIds', arrayContains: userId)
-        .orderBy('createdAt', descending: true)
-        .limit(50)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => GameNotificationModel.fromMap(doc.data(), doc.id))
+    return getUserNotificationsStream(userId).map((notifications) =>
+        notifications
+            .map((data) => GameNotificationModel.fromMap(data, data['id']))
             .toList());
-  }
-
-  /// Отметить уведомление как прочитанное
-  Future<void> markAsRead(String notificationId) async {
-    try {
-      await _firestore
-          .collection(_collectionName)
-          .doc(notificationId)
-          .update({'isRead': true});
-      
-      debugPrint('✅ Уведомление отмечено как прочитанное: $notificationId');
-    } catch (e) {
-      debugPrint('❌ Ошибка отметки уведомления как прочитанного: $e');
-      rethrow;
-    }
-  }
-
-  /// Отметить все уведомления пользователя как прочитанные
-  Future<void> markAllAsRead(String userId) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(_collectionName)
-          .where('recipientIds', arrayContains: userId)
-          .where('isRead', isEqualTo: false)
-          .get();
-
-      final batch = _firestore.batch();
-      
-      for (var doc in querySnapshot.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
-
-      await batch.commit();
-      
-      debugPrint('✅ Все уведомления пользователя $userId отмечены как прочитанные');
-    } catch (e) {
-      debugPrint('❌ Ошибка отметки всех уведомлений как прочитанных: $e');
-      rethrow;
-    }
-  }
-
-  /// Удалить уведомление
-  Future<void> deleteNotification(String notificationId) async {
-    try {
-      await _firestore
-          .collection(_collectionName)
-          .doc(notificationId)
-          .delete();
-      
-      debugPrint('✅ Уведомление удалено: $notificationId');
-    } catch (e) {
-      debugPrint('❌ Ошибка удаления уведомления: $e');
-      rethrow;
-    }
-  }
-
-  /// Получить количество непрочитанных уведомлений о играх
-  Future<int> getUnreadCount(String userId) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(_collectionName)
-          .where('recipientIds', arrayContains: userId)
-          .where('isRead', isEqualTo: false)
-          .get();
-
-      return querySnapshot.docs.length;
-    } catch (e) {
-      debugPrint('❌ Ошибка получения количества непрочитанных уведомлений: $e');
-      return 0;
-    }
   }
 
   // Приватные методы
 
+  /// Отправить уведомление одному пользователю
+  Future<void> _sendSingleNotification(
+    GameNotificationModel notification,
+    String recipientId,
+    String operationDescription,
+  ) async {
+    await executeVoidWithLogging(
+      'отправки уведомления о $operationDescription',
+      () async {
+        final personalNotification = notification.copyWith(
+          id: generateId(),
+          recipientIds: [recipientId],
+        );
+        
+        await FirebaseFirestore.instance
+            .collection(collectionName)
+            .doc(personalNotification.id)
+            .set(personalNotification.toMap());
+      },
+      successDetails: 'игроку $recipientId',
+    );
+  }
+
   /// Отправить уведомление нескольким пользователям
-  Future<void> _sendNotificationToUsers(
+  Future<void> _sendNotificationToMultipleUsers(
     GameNotificationModel notification,
     List<String> recipientIds,
+    String operationDescription,
   ) async {
-    final batch = _firestore.batch();
-    
-    for (String recipientId in recipientIds) {
+    final notifications = recipientIds.map((recipientId) {
       final personalNotification = notification.copyWith(
-        id: _uuid.v4(),
+        id: generateId(),
         recipientIds: [recipientId],
       );
-      
-      final docRef = _firestore
-          .collection(_collectionName)
-          .doc(personalNotification.id);
-      
-      batch.set(docRef, personalNotification.toMap());
-    }
+      return personalNotification.toMap();
+    }).toList();
 
-    await batch.commit();
+    await sendBatchNotifications(notifications, 'отправки уведомлений о $operationDescription');
   }
 
-  /// Получить IDs игроков поблизости (заглушка - нужна геолокация)
+  /// Получить IDs игроков поблизости на основе активных пользователей
   Future<List<String>> _getNearbyPlayersIds(String location) async {
-    // TODO: Реализовать поиск игроков по геолокации
-    // Пока возвращаем всех активных пользователей
-    try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: 'user')
-          .where('isActive', isEqualTo: true)
-          .limit(100)
-          .get();
+    return executeWithLogging(
+      'получения списка игроков поблизости',
+      () async {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('role', isEqualTo: 'user')
+            .where('isActive', isEqualTo: true)
+            .limit(100)
+            .get();
 
-      return querySnapshot.docs.map((doc) => doc.id).toList();
-    } catch (e) {
-      debugPrint('❌ Ошибка получения списка игроков: $e');
-      return [];
-    }
+        return querySnapshot.docs.map((doc) => doc.id).toList();
+      },
+      rethrowErrors: false,
+    ).catchError((e) {
+      logError('получения списка игроков', e);
+      return <String>[];
+    });
   }
 
-  /// Планировщик уведомлений (для будущей реализации)
-  Future<void> scheduleGameStartingNotifications() async {
-    // TODO: Реализовать планировщик уведомлений
-    // Сканировать игры, которые начнутся через 30/15/5 минут
-    // Отправлять соответствующие уведомления
-    debugPrint('📅 Планировщик уведомлений запущен');
-  }
+
 } 

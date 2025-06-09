@@ -25,6 +25,7 @@ class RoomCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final actions = <String>[];
+    final isToday = _isSameDay(room.startTime, DateTime.now());
 
     return Card(
       margin: const EdgeInsets.all(8),
@@ -46,6 +47,25 @@ class RoomCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Бейдж "Today" если игра сегодня
+                  if (isToday) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Today',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   _StatusChip(room.status),
                 ],
               ),
@@ -107,6 +127,13 @@ class RoomCard extends StatelessWidget {
       ),
     );
   }
+
+  // Функция для проверки, является ли дата сегодняшней
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+           date1.month == date2.month &&
+           date1.day == date2.day;
+  }
 }
 
 class _StatusChip extends StatelessWidget {
@@ -126,7 +153,7 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(

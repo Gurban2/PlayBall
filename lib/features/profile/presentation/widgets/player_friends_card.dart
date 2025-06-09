@@ -145,7 +145,12 @@ class PlayerFriendsCard extends StatelessWidget {
           children: [
             Icon(Icons.people, color: AppColors.primary),
             const SizedBox(width: 8),
-            Text('Друзья ${player.name} (${friends.length})'),
+            Expanded(
+              child: Text(
+                'Друзья ${player.name} (${friends.length})',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         content: SizedBox(
@@ -199,7 +204,7 @@ class _FriendItem extends ConsumerWidget {
               backgroundImage: friend.photoUrl != null
                   ? NetworkImage(friend.photoUrl!)
                   : null,
-              backgroundColor: AppColors.primary.withOpacity(0.1),
+              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
               child: friend.photoUrl == null
                   ? Text(
                       _getInitials(friend.name),
@@ -226,19 +231,27 @@ class _FriendItem extends ConsumerWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(
-                        'Игр: ${friend.gamesPlayed}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          'Игр: ${friend.gamesPlayed}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -249,7 +262,7 @@ class _FriendItem extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -303,7 +316,7 @@ class _FriendDialogItem extends ConsumerWidget {
             backgroundImage: friend.photoUrl != null
                 ? NetworkImage(friend.photoUrl!)
                 : null,
-            backgroundColor: AppColors.primary.withOpacity(0.1),
+            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
             child: friend.photoUrl == null
                 ? Text(
                     _getInitials(friend.name),
@@ -330,19 +343,27 @@ class _FriendDialogItem extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Text(
-                      'Игр: ${friend.gamesPlayed}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
+                    Expanded(
+                      flex: 1,
+                      child: Text(
+                        'Игр: ${friend.gamesPlayed}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
+                    Expanded(
+                      flex: 1,
+                      child: Text(
+                        'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],

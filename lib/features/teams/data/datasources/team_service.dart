@@ -7,6 +7,7 @@ import '../../../teams/domain/entities/team_model.dart';
 import '../../../teams/domain/entities/user_team_model.dart';
 import '../../../teams/domain/entities/team_invitation_model.dart';
 import '../../../teams/domain/entities/team_application_model.dart';
+import '../../../teams/domain/entities/team_activity_check_model.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/utils/game_time_utils.dart';
 
@@ -83,11 +84,19 @@ class TeamService {
 
     final batch = _firestore.batch();
 
-    // Добавляем в команду
-    batch.update(_firestore.collection('teams').doc(teamId), {
+    // Подготавливаем данные для обновления команды
+    final teamUpdateData = {
       'members': FieldValue.arrayUnion([userId]),
       'updatedAt': Timestamp.now(),
-    });
+    };
+
+    // Если у команды нет капитана и она пустая, делаем присоединившегося капитаном
+    if (team.captainId == null && team.members.isEmpty) {
+      teamUpdateData['captainId'] = userId;
+    }
+
+    // Добавляем в команду
+    batch.update(_firestore.collection('teams').doc(teamId), teamUpdateData);
 
     // Добавляем в участники комнаты
     if (!room.participants.contains(userId)) {
@@ -132,21 +141,50 @@ class TeamService {
       throw Exception('Выход из команды заблокирован за 5 минут до начала игры');
     }
 
-    if (room.organizerId == userId) {
-      throw Exception('Организатор не может покинуть свою команду');
+    // В обычном режиме организатор игры не может покинуть команду
+    // В командном режиме организатор команды может покинуть матч (но не организатор игры)
+    if (room.organizerId == userId && !room.isTeamMode) {
+      throw Exception('Организатор игры не может покинуть команду');
+    }
+    
+    // В командном режиме организатор игры не может покинуть матч
+    if (room.isTeamMode && room.organizerId == userId) {
+      throw Exception('Организатор игры не может покинуть командный матч');
     }
 
     final batch = _firestore.batch();
 
-    batch.update(_firestore.collection('teams').doc(teamId), {
-      'members': FieldValue.arrayRemove([userId]),
-      'updatedAt': Timestamp.now(),
-    });
+    // НОВАЯ ЛОГИКА: В командном режиме, если организатор команды покидает матч,
+    // то вся команда должна покинуть матч
+    if (room.isTeamMode && team.ownerId == userId) {
+      debugPrint('🚨 Организатор команды покидает командный матч - удаляем всю команду');
+      
+      // Удаляем всех участников команды из комнаты
+      batch.update(_firestore.collection('rooms').doc(team.roomId), {
+        'participants': FieldValue.arrayRemove(team.members),
+        'updatedAt': Timestamp.now(),
+      });
+      
+      // Очищаем команду полностью
+      batch.update(_firestore.collection('teams').doc(teamId), {
+        'members': [],
+        'ownerId': null,
+        'updatedAt': Timestamp.now(),
+      });
+      
+      debugPrint('✅ Вся команда "${team.name}" (${team.members.length} игроков) покинула матч вместе с организатором');
+    } else {
+      // Обычная логика - удаляем только одного игрока
+      batch.update(_firestore.collection('teams').doc(teamId), {
+        'members': FieldValue.arrayRemove([userId]),
+        'updatedAt': Timestamp.now(),
+      });
 
-    batch.update(_firestore.collection('rooms').doc(team.roomId), {
-      'participants': FieldValue.arrayRemove([userId]),
-      'updatedAt': Timestamp.now(),
-    });
+      batch.update(_firestore.collection('rooms').doc(team.roomId), {
+        'participants': FieldValue.arrayRemove([userId]),
+        'updatedAt': Timestamp.now(),
+      });
+    }
 
     await batch.commit();
   }
@@ -724,7 +762,7 @@ class TeamService {
 
   // Выйти из команды (для обычных пользователей)
   Future<void> leaveUserTeam(String userId) async {
-    print('🚪 Начинаем процесс покидания команды для пользователя: $userId');
+    debugPrint('🚪 Начинаем процесс покидания команды для пользователя: $userId');
     
     // Получаем информацию о пользователе
     final user = await _getUserById(userId);
@@ -736,7 +774,7 @@ class TeamService {
       throw Exception('Вы не состоите в команде');
     }
 
-    print('👤 Пользователь найден: ${user.name}, teamId: ${user.teamId}, teamName: ${user.teamName}');
+    debugPrint('👤 Пользователь найден: ${user.name}, teamId: ${user.teamId}, teamName: ${user.teamName}');
 
     // Получаем команду
     final teamDoc = await _firestore.collection(FirestorePaths.userTeamsCollection).doc(user.teamId!).get();
@@ -746,7 +784,7 @@ class TeamService {
 
     final team = UserTeamModel.fromMap(teamDoc.data()!);
     
-    print('🏆 Команда найдена: ${team.name}, участники: ${team.members}');
+    debugPrint('🏆 Команда найдена: ${team.name}, участники: ${team.members}');
     
     // Проверяем, что пользователь не является владельцем команды
     if (team.ownerId == userId) {
@@ -767,7 +805,7 @@ class TeamService {
       'updatedAt': Timestamp.now(),
     });
 
-    print('📝 Обновляем команду, новые участники: $newMembers');
+    debugPrint('📝 Обновляем команду, новые участники: $newMembers');
 
     // Удаляем информацию о команде у пользователя
     batch.update(_firestore.collection(FirestorePaths.usersCollection).doc(userId), {
@@ -777,11 +815,11 @@ class TeamService {
       'updatedAt': Timestamp.now(),
     });
 
-    print('🗑️ Удаляем информацию о команде из профиля пользователя');
+    debugPrint('🗑️ Удаляем информацию о команде из профиля пользователя');
 
     await batch.commit();
     
-    print('✅ Батч-операция завершена успешно');
+    debugPrint('✅ Батч-операция завершена успешно');
     
     // Ждем небольшую задержку для синхронизации Firebase
     await Future.delayed(const Duration(milliseconds: 500));
@@ -789,7 +827,255 @@ class TeamService {
     // Проверяем, что обновление прошло успешно
     final updatedUser = await _getUserById(userId);
     if (updatedUser != null) {
-      print('🔍 Проверка после обновления: teamId=${updatedUser.teamId}, teamName=${updatedUser.teamName}');
+      debugPrint('🔍 Проверка после обновления: teamId=${updatedUser.teamId}, teamName=${updatedUser.teamName}');
+    }
+  }
+
+  // РАБОТА С ПРОВЕРКАМИ АКТИВНОСТИ ИГРОКОВ
+
+  /// Создать новую проверку активности для команды
+  Future<String> createActivityCheck({
+    required String teamId,
+    required String organizerId,
+    required String organizerName,
+    required List<String> teamMembers,
+  }) async {
+    // Проверяем, что нет активной проверки для этой команды
+    final activeCheck = await getActiveActivityCheck(teamId);
+    if (activeCheck != null) {
+      throw Exception('У команды уже есть активная проверка готовности');
+    }
+
+    // Создаем новую проверку активности
+    final activityCheck = TeamActivityCheckModel.createNew(
+      teamId: teamId,
+      organizerId: organizerId,
+      organizerName: organizerName,
+      teamMembers: teamMembers,
+    );
+
+    // Сохраняем в Firestore
+    final docRef = await _firestore
+        .collection('team_activity_checks')
+        .add(activityCheck.toMap());
+
+    debugPrint('✅ Создана проверка активности для команды $teamId: ${docRef.id}');
+    return docRef.id;
+  }
+
+  /// Получить активную проверку активности для команды
+  Future<TeamActivityCheckModel?> getActiveActivityCheck(String teamId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('team_activity_checks')
+          .where('teamId', isEqualTo: teamId)
+          .where('isActive', isEqualTo: true)
+          .orderBy('startedAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+
+      final activityCheck = TeamActivityCheckModel.fromMap(
+        snapshot.docs.first.data(),
+        snapshot.docs.first.id,
+      );
+
+      // Проверяем, не истекла ли проверка
+      if (activityCheck.isExpired) {
+        // Автоматически завершаем истекшую проверку
+        await _completeActivityCheck(activityCheck.id);
+        return null;
+      }
+
+      return activityCheck;
+    } catch (e) {
+      debugPrint('❌ Ошибка получения активной проверки активности: $e');
+      return null;
+    }
+  }
+
+  /// Получить проверку активности по ID
+  Future<TeamActivityCheckModel?> getActivityCheckById(String checkId) async {
+    try {
+      final doc = await _firestore
+          .collection('team_activity_checks')
+          .doc(checkId)
+          .get();
+
+      if (!doc.exists) return null;
+
+      return TeamActivityCheckModel.fromMap(doc.data()!, doc.id);
+    } catch (e) {
+      debugPrint('❌ Ошибка получения проверки активности: $e');
+      return null;
+    }
+  }
+
+  /// Игрок подтверждает свою готовность
+  Future<void> confirmPlayerReadiness(String checkId, String playerId) async {
+    final checkDoc = await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .get();
+
+    if (!checkDoc.exists) {
+      throw Exception('Проверка активности не найдена');
+    }
+
+    final activityCheck = TeamActivityCheckModel.fromMap(
+      checkDoc.data()!,
+      checkDoc.id,
+    );
+
+    // Проверяем, что проверка еще активна
+    if (!activityCheck.isActive || activityCheck.isExpired) {
+      throw Exception('Время для подтверждения готовности истекло');
+    }
+
+    // Проверяем, что игрок в списке участников команды
+    if (!activityCheck.teamMembers.contains(playerId)) {
+      throw Exception('Вы не являетесь участником этой команды');
+    }
+
+    // Проверяем, что игрок еще не подтвердил готовность
+    if (activityCheck.readyPlayers.contains(playerId)) {
+      throw Exception('Вы уже подтвердили свою готовность');
+    }
+
+    // Добавляем игрока в список готовых
+    final updatedReadyPlayers = [...activityCheck.readyPlayers, playerId];
+
+    await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .update({
+      'readyPlayers': updatedReadyPlayers,
+    });
+
+    debugPrint('✅ Игрок $playerId подтвердил готовность в проверке $checkId');
+
+    // Проверяем, готовы ли все игроки
+    if (updatedReadyPlayers.length == activityCheck.teamMembers.length) {
+      await _completeActivityCheck(checkId);
+      debugPrint('🎉 Все игроки команды ${activityCheck.teamId} готовы!');
+    }
+  }
+
+  /// Получить проверки активности для конкретного игрока
+  Future<List<TeamActivityCheckModel>> getPlayerActivityChecks(String playerId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('team_activity_checks')
+          .where('teamMembers', arrayContains: playerId)
+          .where('isActive', isEqualTo: true)
+          .orderBy('startedAt', descending: true)
+          .get();
+
+      final checks = snapshot.docs
+          .map((doc) => TeamActivityCheckModel.fromMap(doc.data(), doc.id))
+          .where((check) => !check.isExpired) // Фильтруем истекшие
+          .toList();
+
+      return checks;
+    } catch (e) {
+      debugPrint('❌ Ошибка получения проверок активности для игрока: $e');
+      return [];
+    }
+  }
+
+  /// Stream для отслеживания активных проверок игрока
+  Stream<List<TeamActivityCheckModel>> watchPlayerActivityChecks(String playerId) {
+    return _firestore
+        .collection('team_activity_checks')
+        .where('teamMembers', arrayContains: playerId)
+        .where('isActive', isEqualTo: true)
+        .orderBy('startedAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => TeamActivityCheckModel.fromMap(doc.data(), doc.id))
+            .where((check) => !check.isExpired)
+            .toList());
+  }
+
+  /// Stream для отслеживания проверки активности организатором
+  Stream<TeamActivityCheckModel?> watchActivityCheck(String checkId) {
+    return _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .snapshots()
+        .map((snapshot) {
+          if (!snapshot.exists) return null;
+          return TeamActivityCheckModel.fromMap(snapshot.data()!, snapshot.id);
+        });
+  }
+
+  /// Завершить проверку активности
+  Future<void> _completeActivityCheck(String checkId) async {
+    await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .update({
+      'isActive': false,
+      'isCompleted': true,
+    });
+
+    debugPrint('✅ Проверка активности $checkId завершена');
+  }
+
+  /// Отменить проверку активности (только организатор)
+  Future<void> cancelActivityCheck(String checkId, String organizerId) async {
+    final checkDoc = await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .get();
+
+    if (!checkDoc.exists) {
+      throw Exception('Проверка активности не найдена');
+    }
+
+    final activityCheck = TeamActivityCheckModel.fromMap(
+      checkDoc.data()!,
+      checkDoc.id,
+    );
+
+    // Проверяем права доступа
+    if (activityCheck.organizerId != organizerId) {
+      throw Exception('Только организатор может отменить проверку активности');
+    }
+
+    await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .update({
+      'isActive': false,
+      'isCompleted': false,
+    });
+
+    debugPrint('❌ Проверка активности $checkId отменена организатором');
+  }
+
+  /// Очистить старые проверки активности (старше 24 часов)
+  Future<void> cleanupOldActivityChecks() async {
+    try {
+      final cutoffTime = DateTime.now().subtract(const Duration(hours: 24));
+      
+      final snapshot = await _firestore
+          .collection('team_activity_checks')
+          .where('startedAt', isLessThan: Timestamp.fromDate(cutoffTime))
+          .get();
+
+      final batch = _firestore.batch();
+      
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+      
+      debugPrint('🧹 Удалено ${snapshot.docs.length} старых проверок активности');
+    } catch (e) {
+      debugPrint('❌ Ошибка очистки старых проверок активности: $e');
     }
   }
 } 

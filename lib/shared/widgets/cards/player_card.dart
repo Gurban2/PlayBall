@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/constants.dart';
 import '../../../features/auth/domain/entities/user_model.dart';
+import '../dialogs/player_profile_dialog.dart';
 
-class PlayerCard extends StatelessWidget {
+class PlayerCard extends ConsumerWidget {
   final UserModel player;
   final VoidCallback? onTap;
   final bool showTeamInfo;
@@ -17,11 +19,11 @@ class PlayerCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       margin: const EdgeInsets.only(bottom: AppSizes.smallSpace),
       child: InkWell(
-        onTap: onTap,
+        onTap: onTap ?? () => _showPlayerProfile(context, ref),
         borderRadius: BorderRadius.circular(AppSizes.cardRadius),
         child: Padding(
           padding: compact 
@@ -95,10 +97,10 @@ class PlayerCard extends StatelessWidget {
                     // Статистика
                     if (!compact) ...[
                       Text(
-                        'Рейтинг: ${player.rating.toStringAsFixed(1)} • ${player.gamesPlayed} игр',
+                        '★ ${player.calculatedRating.toStringAsFixed(1)} • ${player.gamesPlayed} игр',
                         style: const TextStyle(
-                          fontSize: 12,
                           color: AppColors.textSecondary,
+                          fontSize: 12,
                         ),
                       ),
                       
@@ -150,12 +152,15 @@ class PlayerCard extends StatelessWidget {
                       // Компактная версия
                       Row(
                         children: [
-                          Text(
-                            '${player.rating.toStringAsFixed(1)}★',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.warning,
-                              fontWeight: FontWeight.bold,
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              '★ ${player.calculatedRating.toStringAsFixed(1)} • ${player.gamesPlayed} игр',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -167,6 +172,7 @@ class PlayerCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 2),
                             Expanded(
+                              flex: 1,
                               child: Text(
                                 player.teamName!,
                                 style: const TextStyle(
@@ -217,6 +223,15 @@ class PlayerCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showPlayerProfile(BuildContext context, WidgetRef ref) {
+    PlayerProfileDialog.show(
+      context,
+      ref,
+      player.id,
+      playerName: player.name,
     );
   }
 

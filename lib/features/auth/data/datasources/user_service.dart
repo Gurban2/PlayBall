@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/entities/user_model.dart';
 import '../../../profile/domain/entities/friend_request_model.dart';
+import 'package:flutter/foundation.dart';
 
 class UserService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -24,12 +25,16 @@ class UserService {
     String? name,
     String? photoUrl,
     UserRole? role,
+    String? bio,
+    PlayerStatus? status,
   }) async {
     final Map<String, dynamic> updates = {};
     
     if (name != null) updates['name'] = name;
     if (photoUrl != null) updates['photoUrl'] = photoUrl;
     if (role != null) updates['role'] = role.toString().split('.').last;
+    if (bio != null) updates['bio'] = bio;
+    if (status != null) updates['status'] = status.toString().split('.').last;
     
     updates['updatedAt'] = Timestamp.now();
     
@@ -414,6 +419,27 @@ class UserService {
     }
 
     await batch.commit();
-    print('🏆 Начислено по 1 очку ${playerIds.length} игрокам');
+          debugPrint('🏆 Начислено по 1 очку ${playerIds.length} игрокам');
+  }
+
+  /// Обновить рейтинг пользователя на основе винрейта
+  Future<void> updateUserRating(String userId) async {
+    try {
+      final user = await getUserById(userId);
+      if (user == null) return;
+      
+      // Рассчитываем новый рейтинг на основе винрейта
+      final newRating = user.calculatedRating;
+      
+      // Обновляем рейтинг в базе данных
+      await _firestore.collection(_usersCollection).doc(userId).update({
+        'rating': newRating,
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+      
+      debugPrint('✅ Обновлен рейтинг пользователя $userId: ${newRating.toStringAsFixed(1)}/5.0 (винрейт: ${user.winRate.toStringAsFixed(1)}%)');
+    } catch (e) {
+      debugPrint('❌ Ошибка обновления рейтинга пользователя $userId: $e');
+    }
   }
 } 

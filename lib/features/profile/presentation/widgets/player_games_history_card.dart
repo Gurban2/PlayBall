@@ -82,7 +82,6 @@ class _GameItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isWin = game.result == 'win';
-    final isLoss = game.result == 'loss';
     final isCancelled = game.result == 'cancelled';
 
     Color resultColor;
@@ -108,10 +107,10 @@ class _GameItem extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: resultColor.withOpacity(0.05),
+          color: resultColor.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: resultColor.withOpacity(0.2),
+            color: resultColor.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -148,11 +147,15 @@ class _GameItem extends StatelessWidget {
                         color: AppColors.textSecondary,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        game.location,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          game.location,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -162,11 +165,15 @@ class _GameItem extends StatelessWidget {
                         color: AppColors.textSecondary,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '${game.date.day}.${game.date.month}.${game.date.year}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          '${game.date.day}.${game.date.month}.${game.date.year}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],

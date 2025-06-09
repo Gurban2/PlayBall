@@ -102,11 +102,11 @@ class UserModel {
   final DateTime createdAt;
   final DateTime? updatedAt;
   
-  // Поля для статистики и рейтинга
+  // Поля для статистики
   final int gamesPlayed;
   final int wins;
   final int losses;
-  final double rating; // Рейтинг от 1.0 до 5.0
+  final double rating; // Рейтинг от 0.0 до 5.0 звезд
   final int totalReviews; // Количество отзывов
   final String skillLevel; // Уровень игры: 'Начинающий', 'Средний', 'Продвинутый', 'Профессиональный'
   final List<String> preferredLocations; // Предпочитаемые города/районы
@@ -165,6 +165,13 @@ class UserModel {
 
   // Вычисляемые свойства
   double get winRate => gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0.0;
+  
+  /// Рейтинг на основе винрейта (0.0 - 5.0 звезд)
+  double get calculatedRating {
+    if (gamesPlayed == 0) return 2.5; // Средний рейтинг для новых игроков
+    return (winRate / 20).clamp(0.0, 5.0); // winRate 0-100% преобразуем в 0-5 звезд
+  }
+  
   bool get hasPlayedGames => gamesPlayed > 0;
   String get experienceLevel {
     if (gamesPlayed < 5) return 'Новичок';

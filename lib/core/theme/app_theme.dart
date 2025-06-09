@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../constants/constants.dart';
 
 /// Конфигурация темы приложения с Material Design 3
 class AppTheme {
@@ -9,8 +8,6 @@ class AppTheme {
   static const Color _secondaryColor = Color(0xFF8B5CF6); // Фиолетовый
   static const Color _tertiaryColor = Color(0xFF06B6D4); // Голубой
   static const Color _errorColor = Color(0xFFEF4444); // Красный
-  static const Color _successColor = Color(0xFF10B981); // Зеленый
-  static const Color _warningColor = Color(0xFFF59E0B); // Желтый
   
   /// Светлая тема
   static ThemeData get lightTheme {
@@ -35,17 +32,15 @@ class AppTheme {
       onErrorContainer: const Color(0xFF7F1D1D),
       surface: const Color(0xFFFCFCFD),
       onSurface: const Color(0xFF1F2937),
-      surfaceVariant: const Color(0xFFF8FAFC),
+      surfaceContainerHighest: const Color(0xFFF8FAFC),
       onSurfaceVariant: const Color(0xFF6B7280),
       outline: const Color(0xFFD1D5DB),
       outlineVariant: const Color(0xFFE5E7EB),
-      shadow: Colors.black.withOpacity(0.05),
-      scrim: Colors.black.withOpacity(0.15),
+      shadow: Colors.black.withValues(alpha: 0.05),
+      scrim: Colors.black.withValues(alpha: 0.15),
       inverseSurface: const Color(0xFF374151),
       onInverseSurface: const Color(0xFFF9FAFB),
       inversePrimary: const Color(0xFFA5B4FC),
-      background: const Color(0xFFFEFEFE),
-      onBackground: const Color(0xFF1F2937),
     );
 
     return ThemeData(
@@ -76,10 +71,10 @@ class AppTheme {
       pageTransitionsTheme: _buildPageTransitionsTheme(),
       
       // === ДРУГИЕ НАСТРОЙКИ ===
-      splashColor: colorScheme.primary.withOpacity(0.08),
-      highlightColor: colorScheme.primary.withOpacity(0.04),
-      focusColor: colorScheme.primary.withOpacity(0.10),
-      hoverColor: colorScheme.primary.withOpacity(0.06),
+      splashColor: colorScheme.primary.withValues(alpha: 0.08),
+      highlightColor: colorScheme.primary.withValues(alpha: 0.04),
+      focusColor: colorScheme.primary.withValues(alpha: 0.10),
+      hoverColor: colorScheme.primary.withValues(alpha: 0.06),
     );
   }
 
@@ -106,17 +101,16 @@ class AppTheme {
       onErrorContainer: const Color(0xFFFEECEB),
       surface: const Color(0xFF1F2937), // Темно-серый
       onSurface: const Color(0xFFF9FAFB), // Светлый текст
-      surfaceVariant: const Color(0xFF374151),
+      surfaceContainerHighest: const Color(0xFF374151),
       onSurfaceVariant: const Color(0xFFD1D5DB),
       outline: const Color(0xFF6B7280),
       outlineVariant: const Color(0xFF4B5563),
-      shadow: Colors.black.withOpacity(0.3),
-      scrim: Colors.black.withOpacity(0.5),
+      shadow: Colors.black.withValues(alpha: 0.3),
+      scrim: Colors.black.withValues(alpha: 0.5),
       inverseSurface: const Color(0xFFF9FAFB),
       onInverseSurface: const Color(0xFF374151),
       inversePrimary: _primaryColor,
-      background: const Color(0xFF111827), // Очень темный фон
-      onBackground: const Color(0xFFF9FAFB), // Светлый текст на фоне
+
     );
 
     return ThemeData(
@@ -142,10 +136,10 @@ class AppTheme {
       
       pageTransitionsTheme: _buildPageTransitionsTheme(),
       
-      splashColor: colorScheme.primary.withOpacity(0.08),
-      highlightColor: colorScheme.primary.withOpacity(0.04),
-      focusColor: colorScheme.primary.withOpacity(0.10),
-      hoverColor: colorScheme.primary.withOpacity(0.06),
+      splashColor: colorScheme.primary.withValues(alpha: 0.08),
+      highlightColor: colorScheme.primary.withValues(alpha: 0.04),
+      focusColor: colorScheme.primary.withValues(alpha: 0.10),
+      hoverColor: colorScheme.primary.withValues(alpha: 0.06),
     );
   }
 
@@ -155,18 +149,21 @@ class AppTheme {
     return TextTheme(
       // Дисплейные стили (большие заголовки)
       displayLarge: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 57,
         fontWeight: FontWeight.w400,
         letterSpacing: -0.25,
         color: colorScheme.onSurface,
       ),
       displayMedium: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 45,
         fontWeight: FontWeight.w400,
         letterSpacing: 0,
         color: colorScheme.onSurface,
       ),
       displaySmall: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 36,
         fontWeight: FontWeight.w400,
         letterSpacing: 0,
@@ -175,18 +172,21 @@ class AppTheme {
       
       // Заголовки
       headlineLarge: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 32,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         color: colorScheme.onSurface,
       ),
       headlineMedium: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 28,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         color: colorScheme.onSurface,
       ),
       headlineSmall: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 24,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
@@ -195,65 +195,71 @@ class AppTheme {
       
       // Заголовки среднего размера
       titleLarge: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 22,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         color: colorScheme.onSurface,
       ),
       titleMedium: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 16,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.15,
         color: colorScheme.onSurface,
       ),
       titleSmall: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 14,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.1,
         color: colorScheme.onSurface,
       ),
       
-      // Лейблы
-      labelLarge: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.1,
-        color: colorScheme.onSurface,
-      ),
-      labelMedium: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-        color: colorScheme.onSurface,
-      ),
-      labelSmall: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-        color: colorScheme.onSurface,
-      ),
-      
-      // Тело текста
+      // Основной текст
       bodyLarge: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 16,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.5,
         color: colorScheme.onSurface,
-        height: 1.5,
       ),
       bodyMedium: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 14,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.25,
         color: colorScheme.onSurface,
-        height: 1.4,
       ),
       bodySmall: TextStyle(
+        fontFamily: 'NunitoSans',
         fontSize: 12,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.4,
-        color: colorScheme.onSurface.withOpacity(0.7),
-        height: 1.3,
+        color: colorScheme.onSurfaceVariant,
+      ),
+      
+      // Подписи и метки
+      labelLarge: TextStyle(
+        fontFamily: 'NunitoSans',
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.1,
+        color: colorScheme.onSurface,
+      ),
+      labelMedium: TextStyle(
+        fontFamily: 'NunitoSans',
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.5,
+        color: colorScheme.onSurface,
+      ),
+      labelSmall: TextStyle(
+        fontFamily: 'NunitoSans',
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.5,
+        color: colorScheme.onSurfaceVariant,
       ),
     );
   }
@@ -380,7 +386,7 @@ class AppTheme {
   static InputDecorationTheme _buildInputTheme(ColorScheme colorScheme) {
     return InputDecorationTheme(
       filled: true,
-      fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
+      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: colorScheme.outline),
@@ -406,7 +412,7 @@ class AppTheme {
         fontSize: 16,
       ),
       hintStyle: TextStyle(
-        color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
         fontSize: 16,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -417,7 +423,7 @@ class AppTheme {
     return BottomNavigationBarThemeData(
       backgroundColor: colorScheme.surface,
       selectedItemColor: colorScheme.primary,
-      unselectedItemColor: colorScheme.onSurface.withOpacity(0.6),
+      unselectedItemColor: colorScheme.onSurface.withValues(alpha: 0.6),
       type: BottomNavigationBarType.fixed,
       elevation: 8,
       selectedLabelStyle: const TextStyle(
@@ -436,14 +442,14 @@ class AppTheme {
       backgroundColor: colorScheme.surface,
       surfaceTintColor: colorScheme.surfaceTint,
       indicatorColor: colorScheme.secondaryContainer,
-      iconTheme: MaterialStateProperty.resolveWith((states) {
-        if (states.contains(MaterialState.selected)) {
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
           return IconThemeData(color: colorScheme.onSecondaryContainer);
         }
-        return IconThemeData(color: colorScheme.onSurface.withOpacity(0.6));
+        return IconThemeData(color: colorScheme.onSurface.withValues(alpha: 0.6));
       }),
-      labelTextStyle: MaterialStateProperty.resolveWith((states) {
-        if (states.contains(MaterialState.selected)) {
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
           return TextStyle(
             color: colorScheme.onSurface,
             fontSize: 12,
@@ -451,7 +457,7 @@ class AppTheme {
           );
         }
         return TextStyle(
-          color: colorScheme.onSurface.withOpacity(0.6),
+          color: colorScheme.onSurface.withValues(alpha: 0.6),
           fontSize: 12,
           fontWeight: FontWeight.w400,
         );
@@ -463,9 +469,9 @@ class AppTheme {
 
   static ChipThemeData _buildChipTheme(ColorScheme colorScheme) {
     return ChipThemeData(
-      backgroundColor: colorScheme.surfaceVariant,
+      backgroundColor: colorScheme.surfaceContainerHighest,
       deleteIconColor: colorScheme.onSurfaceVariant,
-      disabledColor: colorScheme.onSurface.withOpacity(0.12),
+      disabledColor: colorScheme.onSurface.withValues(alpha: 0.12),
       selectedColor: colorScheme.secondaryContainer,
       secondarySelectedColor: colorScheme.secondaryContainer,
       shadowColor: colorScheme.shadow,
@@ -548,7 +554,7 @@ class AppTheme {
         ),
       ),
       showDragHandle: true,
-      dragHandleColor: colorScheme.onSurfaceVariant.withOpacity(0.4),
+      dragHandleColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
       dragHandleSize: const Size(32, 4),
     );
   }

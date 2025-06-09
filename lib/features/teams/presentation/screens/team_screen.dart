@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../../core/providers.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
-import '../../../rooms/domain/entities/room_model.dart';
+import '../../../../shared/widgets/dialogs/unified_dialogs.dart';
+import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
+
 
 class TeamScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -70,12 +74,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки данных: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -99,45 +98,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
   }
 
   Future<void> _createTeam() async {
-    final teamNameController = TextEditingController();
-    
-    final result = await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text(AppStrings.createTeam),
-          content: TextFormField(
-            controller: teamNameController,
-            decoration: const InputDecoration(
-              labelText: 'Название команды',
-              border: OutlineInputBorder(),
-            ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Введите название команды';
-              }
-              return null;
-            },
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(AppStrings.cancel),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final teamName = teamNameController.text.trim();
-                if (teamName.isNotEmpty) {
-                  Navigator.of(context).pop(teamName);
-                }
-              },
-              child: const Text(AppStrings.createTeam),
-            ),
-          ],
-        );
-      },
-    );
+    final result = await UnifiedDialogs.showCreateTeam(context: context);
 
     if (result != null) {
       setState(() {
@@ -163,24 +124,14 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
         });
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Команда успешно создана!'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ErrorHandler.teamCreated(context, result);
         }
       } catch (e) {
         if (mounted) {
           setState(() {
             _isCreatingTeam = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка создания команды: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }
@@ -206,21 +157,11 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${user.name} добавлен в команду ${team.name}'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.showSuccess(context, '${user.name} добавлен в команду ${team.name}');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка добавления в команду: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -247,21 +188,11 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${user.name} удален из команды ${team.name}'),
-            backgroundColor: AppColors.warning,
-          ),
-        );
+        ErrorHandler.showWarning(context, '${user.name} удален из команды ${team.name}');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка удаления из команды: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -316,6 +247,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                   final member = teamMembers[index];
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
+                    onTap: () => PlayerProfileDialog.show(context, ref, member.id, playerName: member.name),
                     leading: CircleAvatar(
                       backgroundColor: AppColors.primary,
                       child: member.photoUrl != null
@@ -333,7 +265,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                           : const Icon(Icons.person, color: Colors.white),
                     ),
                     title: Text(member.name),
-                    subtitle: Text('Рейтинг: ${member.rating}'),
+                    subtitle: Text('${member.gamesPlayed} игр'),
                     trailing: IconButton(
                       icon: const Icon(Icons.remove_circle, color: AppColors.error),
                       onPressed: () => _removeUserFromTeam(team, member.id),
@@ -385,7 +317,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                           : null,
                     ),
                     title: Text(user.name),
-                    subtitle: Text('Рейтинг: ${user.rating.toStringAsFixed(1)}'),
+                    subtitle: Text('${user.gamesPlayed} игр'),
                     onTap: () {
                       Navigator.of(context).pop();
                       _addUserToTeam(team, user);
@@ -429,6 +361,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                 return Card(
                   margin: const EdgeInsets.only(bottom: 4),
                   child: ListTile(
+                    onTap: () => PlayerProfileDialog.show(context, ref, user.id, playerName: user.name),
                     leading: CircleAvatar(
                       backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                       backgroundImage: user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
@@ -438,7 +371,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                           : null,
                     ),
                     title: Text(user.name),
-                    subtitle: Text('Рейтинг: ${user.rating.toStringAsFixed(1)}'),
+                    subtitle: Text('${user.gamesPlayed} игр'),
                   ),
                 );
               }).toList(),

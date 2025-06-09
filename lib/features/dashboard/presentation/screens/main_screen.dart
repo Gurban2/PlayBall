@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../auth/domain/entities/user_model.dart';
-import '../../../../core/providers.dart';
+import 'dart:async';
 import '../../../../core/constants/constants.dart';
-import '../../../../core/router/app_router.dart';
-import 'schedule_screen.dart';
-import '../../../profile/presentation/screens/profile_screen.dart';
+import '../../../../core/errors/error_handler.dart';
+import '../../../../core/providers.dart';
+import '../../../../core/services/background_scheduler_service.dart';
+import '../../../../shared/widgets/navigation/hamburger_menu.dart';
+import '../../../auth/domain/entities/user_model.dart';
+
+
+
+
+
+
+
 
 // Обёртка для показа нижней навигации на всех страницах
-class ScaffoldWithBottomNav extends ConsumerWidget {
+class ScaffoldWithBottomNav extends ConsumerStatefulWidget {
   final Widget child;
   final String currentRoute;
 
@@ -19,6 +27,70 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
     required this.currentRoute,
   });
 
+  @override
+  ConsumerState<ScaffoldWithBottomNav> createState() => _ScaffoldWithBottomNavState();
+}
+
+class _ScaffoldWithBottomNavState extends ConsumerState<ScaffoldWithBottomNav> 
+    with WidgetsBindingObserver {
+  int selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Подписываемся на изменения состояния приложения
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Запускаем фоновый планировщик
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final backgroundScheduler = ref.read(backgroundSchedulerServiceProvider);
+        backgroundScheduler.start(ref);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // Отписываемся от изменений состояния приложения
+    WidgetsBinding.instance.removeObserver(this);
+    
+    // Останавливаем фоновый планировщик
+    try {
+      final backgroundScheduler = ref.read(backgroundSchedulerServiceProvider);
+      backgroundScheduler.stop();
+    } catch (e) {
+      // Игнорируем ошибки при dispose
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Обновляем данные при возвращении в приложение
+    if (state == AppLifecycleState.resumed && mounted) {
+      debugPrint('🔄 Приложение возобновлено - обновляем все провайдеры');
+      
+      // Обновляем основные провайдеры данных
+      // ignore: unused_result
+      ref.refresh(currentUserProvider);
+      // ignore: unused_result
+      ref.refresh(activeRoomsProvider);
+      // ignore: unused_result
+      ref.refresh(plannedRoomsProvider);
+      // ignore: unused_result
+      ref.refresh(userRoomsProvider);
+      
+      // Перезапускаем фоновый планировщик
+      final backgroundScheduler = ref.read(backgroundSchedulerServiceProvider);
+      backgroundScheduler.stop();
+      backgroundScheduler.start(ref);
+    }
+  }
+
   // Страницы, где нижняя навигация НЕ должна отображаться
   static const List<String> _pagesWithoutBottomNav = [
     '/welcome',
@@ -27,158 +99,170 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
   ];
 
   bool _shouldShowBottomNav() {
-    return !_pagesWithoutBottomNav.any((page) => currentRoute.startsWith(page));
+    return !_pagesWithoutBottomNav.any((page) => widget.currentRoute.startsWith(page));
   }
 
   int _getSelectedIndex(String route) {
     if (route.startsWith('/home') || 
-        route.startsWith('/schedule') || 
+        route.startsWith('/schedule') ||
         route == '/' ||
+        route.startsWith('/organizer-dashboard') ||
         route.startsWith('/room') ||
-        route.startsWith('/create-room') ||
-        route.startsWith('/organizer-dashboard')) {
-      return 0; // Расписание
-    } else if (route.startsWith('/profile') || 
-               route.startsWith('/team-') || 
-               route.startsWith('/friend-requests') ||
-               route.startsWith('/team-invitations') ||
-               route.startsWith('/team-applications') ||
-               route.startsWith('/player/') ||
+        route.startsWith('/create-room')) {
+      return 0; // Главная/Игры
+    } else if (route.startsWith('/team-') || 
                route.startsWith('/my-team')) {
-      return 1; // Профиль
+      return 1; // Команды
     }
-    return 0; // По умолчанию расписание
+    return 0; // По умолчанию главная
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
     
     return userAsync.when(
       loading: () => Scaffold(
-        body: child,
+        body: widget.child,
       ),
       error: (error, stack) => Scaffold(
-        body: child,
+        body: widget.child,
       ),
       data: (user) {
         // Если пользователь не авторизован или на страницах без навигации
         if (user == null || !_shouldShowBottomNav()) {
-          return Scaffold(body: child);
+          return Scaffold(body: widget.child);
         }
 
-        final selectedIndex = _getSelectedIndex(currentRoute);
+        final selectedIndex = _getSelectedIndex(widget.currentRoute);
 
         return Scaffold(
           appBar: AppBar(
             backgroundColor: AppColors.darkGrey,
             foregroundColor: Colors.white,
-            title: Row(
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                  backgroundImage: user.photoUrl != null
-                      ? NetworkImage(user.photoUrl!)
-                      : null,
-                  child: user.photoUrl == null
-                      ? Text(
-                          _getInitials(user.name),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user.name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (user.teamName != null)
-                        Text(
-                          user.teamName!,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.white70,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
+            toolbarHeight: 36, // Увеличил для нового дизайна
+            titleSpacing: 0,
+            title: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  // Левый угол - иконка игры (24px)
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.sports_volleyball,
+                      size: 16,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            actions: [
-              // Кнопка домой
-              IconButton(
-                icon: const Icon(Icons.home),
-                onPressed: () => context.go(AppRoutes.home),
-                tooltip: 'На главную',
+                  
+                  const Spacer(),
+                  
+                  // Центр - селектор волейбол/футбол
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  
+                    child: DropdownButton<String>(
+                      value: 'volleyball',
+                      underline: const SizedBox(),
+                      icon: const Icon(Icons.expand_more, color: Colors.white, size: 16),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      dropdownColor: AppColors.darkGrey,
+                      items: [
+                        DropdownMenuItem(
+                          value: 'volleyball',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.sports_volleyball, size: 16, color: Colors.white),
+                              SizedBox(width: 6),
+                              Text('Волейбол'),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'football',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.sports_soccer, size: 16, color: Colors.grey),
+                              SizedBox(width: 6),
+                              Text('Футбол', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == 'football') {
+                          ErrorHandler.showInfo(context, 'Футбол будет доступен в следующих обновлениях');
+                        }
+                      },
+                    ),
+                  ),
+                  
+                  const Spacer(),
+                  
+                  // Правый угол - hamburger menu
+                  const HamburgerMenu(),
+                ],
               ),
-              // Иконка уведомлений (если есть)
-              _buildNotificationIcon(context, ref, user),
-            ],
+            ),
             automaticallyImplyLeading: false,
             elevation: 1,
           ),
-          body: child,
-          bottomNavigationBar: Container(
-            decoration: BoxDecoration(
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
+          body: widget.child,
+                bottomNavigationBar: Container(
+        height: 52, // Фиксированная высота как в карточках
+        decoration: BoxDecoration(
+          color: AppColors.darkGrey,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 6, // Уменьшил с 10 до 6
+              offset: const Offset(0, -1), // Уменьшил с -2 до -1
             ),
+          ],
+        ),
             child: BottomNavigationBar(
               currentIndex: selectedIndex,
               onTap: (index) => _onTabTapped(context, index),
               type: BottomNavigationBarType.fixed,
-              backgroundColor: AppColors.darkGrey,
+              backgroundColor: Colors.transparent,
               selectedItemColor: Colors.white,
               unselectedItemColor: AppColors.lightGrey,
-              selectedLabelStyle: AppTextStyles.caption.copyWith(
+              selectedLabelStyle: const TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 12,
+                fontSize: 10, // Уменьшил с 12 до 10
                 color: Colors.white,
               ),
-              unselectedLabelStyle: AppTextStyles.caption.copyWith(
+              unselectedLabelStyle: const TextStyle(
                 fontWeight: FontWeight.w500,
-                fontSize: 11,
+                fontSize: 9, // Уменьшил с 11 до 9
                 color: AppColors.lightGrey,
               ),
               elevation: 0,
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.schedule_outlined),
-                  activeIcon: Icon(Icons.schedule),
-                  label: 'Расписание',
+              items: [
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.sports_volleyball_outlined),
+                  activeIcon: Icon(Icons.sports_volleyball),
+                  label: 'Игры',
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.person_outline),
-                  activeIcon: Icon(Icons.person),
-                  label: 'Профиль',
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.groups_outlined),
+                  activeIcon: Icon(Icons.groups),
+                  label: 'Команда',
                 ),
               ],
             ),
           ),
           floatingActionButton: (user.role == UserRole.organizer || user.role == UserRole.admin)
               ? FloatingActionButton(
-                  onPressed: () => context.push(AppRoutes.createRoom),
+                  onPressed: () => context.push('/create-room'),
                   backgroundColor: AppColors.darkGrey,
                   foregroundColor: Colors.white,
                   elevation: 8,
@@ -192,19 +276,16 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
   }
 
   void _onTabTapped(BuildContext context, int index) {
+    setState(() {
+      selectedIndex = index;
+    });
+
     switch (index) {
-      case 0:
+      case 0: // Игры
         context.go(AppRoutes.home);
         break;
-      case 1:
-        // Проверяем авторизацию перед переходом на профиль
-        final container = ProviderScope.containerOf(context);
-        final user = container.read(currentUserProvider).value;
-        if (user != null) {
-          context.go(AppRoutes.profile);
-        } else {
-          context.go(AppRoutes.login);
-        }
+      case 1: // Команды
+        context.go(AppRoutes.myTeam);
         break;
     }
   }
@@ -217,172 +298,5 @@ class ScaffoldWithBottomNav extends ConsumerWidget {
       return name[0].toUpperCase();
     }
     return '';
-  }
-
-  Widget _buildNotificationIcon(BuildContext context, WidgetRef ref, UserModel user) {
-    return FutureBuilder<int>(
-      future: _getTotalNotificationsCount(ref, user),
-      builder: (context, snapshot) {
-        final count = snapshot.data ?? 0;
-        return Stack(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () => context.push('/notifications'),
-            ),
-            if (count > 0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: AppColors.error,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 16,
-                  ),
-                  child: Text(
-                    count.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<int> _getTotalNotificationsCount(WidgetRef ref, UserModel user) async {
-    try {
-      final userService = ref.read(userServiceProvider);
-      final teamService = ref.read(teamServiceProvider);
-      
-      final friendRequestsCount = await userService.getIncomingRequestsCount(user.id);
-      final teamInvitationsCount = await teamService.getIncomingTeamInvitationsCount(user.id);
-      
-      return friendRequestsCount + teamInvitationsCount;
-    } catch (e) {
-      return 0;
-    }
-  }
-}
-
-// Оригинальный MainScreen для обратной совместимости
-class MainScreen extends ConsumerStatefulWidget {
-  final int initialIndex;
-  
-  const MainScreen({super.key, this.initialIndex = 0});
-
-  @override
-  ConsumerState<MainScreen> createState() => _MainScreenState();
-}
-
-class _MainScreenState extends ConsumerState<MainScreen> {
-  late int _currentIndex;
-  
-  final List<Widget> _screens = [
-    const ScheduleScreen(),
-    const ProfileScreen(),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-  }
-
-  void _onTabTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-  }
-
-  void _navigateToCreateRoom() {
-    context.push(AppRoutes.createRoom);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: _onTabTapped,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: AppColors.darkGrey,
-          selectedItemColor: Colors.white,
-          unselectedItemColor: AppColors.lightGrey,
-          selectedLabelStyle: AppTextStyles.caption.copyWith(
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-            color: Colors.white,
-          ),
-          unselectedLabelStyle: AppTextStyles.caption.copyWith(
-            fontWeight: FontWeight.w500,
-            fontSize: 11,
-            color: AppColors.lightGrey,
-          ),
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.schedule_outlined),
-              activeIcon: Icon(Icons.schedule),
-              label: 'Расписание',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Профиль',
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: Consumer(
-        builder: (context, ref, child) {
-          final userAsync = ref.watch(currentUserProvider);
-          return userAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (error, stack) => const SizedBox.shrink(),
-            data: (user) {
-              // Показываем кнопку только организаторам и админам
-              if (user?.role == UserRole.organizer || user?.role == UserRole.admin) {
-                return FloatingActionButton(
-                  onPressed: _navigateToCreateRoom,
-                  backgroundColor: AppColors.darkGrey,
-                  foregroundColor: Colors.white,
-                  elevation: 8,
-                  child: const Icon(Icons.add, size: 28),
-                );
-              } else {
-                return const SizedBox.shrink();
-              }
-            },
-          );
-        },
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-    );
   }
 } 

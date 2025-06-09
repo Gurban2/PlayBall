@@ -3,14 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/utils/game_time_utils.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
+
 import '../../../rooms/domain/entities/room_model.dart';
-import '../../../../shared/widgets/dialogs/confirmation_dialog.dart';
+
 import '../../../../shared/widgets/cards/player_card.dart';
+import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
 import '../widgets/room_action_buttons.dart';
+import '../../../../shared/widgets/dialogs/unified_dialogs.dart';
 
 class RoomScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -63,12 +67,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     
     // Проверяем авторизацию
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Необходимо войти в систему'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+      ErrorHandler.showError(context, 'Необходимо войти в систему');
       return;
     }
     
@@ -84,12 +83,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       final isParticipant = room.participants.contains(user.id);
       
       if (!isParticipant) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Вы можете участвовать в командных играх только через организатора вашей команды'),
-            backgroundColor: AppColors.warning,
-          ),
-        );
+        ErrorHandler.permissionDenied(context);
         return;
       }
     }
@@ -104,13 +98,24 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     });
 
     try {
-      // Пока временная заглушка, метод можно реализовать позже
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Функция в разработке'),
-          backgroundColor: AppColors.warning,
-        ),
+      final roomService = ref.read(roomServiceProvider);
+      await roomService.addOrganizerTeamToGame(
+        roomId: room.id,
+        organizerId: user.id,
       );
+      
+      if (mounted) {
+        ErrorHandler.teamJoined(context, 'игру');
+        
+        // Обновляем провайдеры
+        ref.invalidate(roomProvider(widget.roomId));
+        ref.invalidate(teamsProvider(widget.roomId));
+        ref.invalidate(currentUserProvider);
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -121,21 +126,41 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   }
 
   Future<void> _leaveTeam(String teamId, UserModel user) async {
+    final room = ref.read(roomProvider(widget.roomId)).value;
+    if (room == null) return;
+
+    // Получаем информацию о команде
+    final teamService = ref.read(teamServiceProvider);
+    final team = await teamService.getTeamById(teamId);
+    if (team == null) return;
+
+    // Проверяем, является ли пользователь организатором команды в командном режиме
+    if (room.isTeamMode && team.ownerId == user.id) {
+      // Показываем предупреждающий диалог
+      final confirmed = await UnifiedDialogs.showLeaveTeamWarning(
+        context: context,
+        teamName: team.name,
+        teamSize: team.members.length,
+        isOwner: true,
+      );
+
+      if (confirmed != true) return;
+    }
+
     setState(() {
       _isJoining = true;
     });
 
     try {
-      final teamService = ref.read(teamServiceProvider);
       await teamService.leaveTeam(teamId, user.id);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Вы покинули команду'),
-            backgroundColor: AppColors.warning,
-          ),
-        );
+        String message = 'Вы покинули команду';
+        if (room.isTeamMode && team.ownerId == user.id) {
+          message = 'Вся команда "${team.name}" покинула матч';
+        }
+        
+        ErrorHandler.showWarning(context, message);
         
         // Принудительно обновляем все связанные провайдеры
         ref.invalidate(roomProvider(widget.roomId));
@@ -148,12 +173,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка выхода из команды: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, 'Ошибка выхода из команды: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -170,23 +190,13 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       await roomService.updateRoom(roomId: widget.roomId, status: newStatus);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Статус игры обновлен'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.showSuccess(context, 'Статус игры обновлен');
         // Обновляем провайдер
         ref.invalidate(roomProvider(widget.roomId));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка обновления статуса: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, 'Ошибка обновления статуса: ${e.toString()}');
       }
     }
   }
@@ -235,7 +245,6 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     final userAsync = ref.watch(currentUserProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
           'Детали игры',
@@ -258,6 +267,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               ref.invalidate(roomProvider(widget.roomId));
+              // ignore: unused_result
               ref.refresh(currentUserProvider);
             },
           ),
@@ -274,7 +284,10 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
               Text('Ошибка загрузки комнаты: $error'),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () => ref.refresh(roomProvider(widget.roomId)),
+                onPressed: () {
+                  // ignore: unused_result
+                  ref.refresh(roomProvider(widget.roomId));
+                },
                 child: const Text('Повторить'),
               ),
               const SizedBox(height: 8),
@@ -324,18 +337,29 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                       Text('Ошибка загрузки пользователя: $error'),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: () => ref.refresh(currentUserProvider),
+                        onPressed: () {
+                          // ignore: unused_result
+                          ref.refresh(currentUserProvider);
+                        },
                         child: const Text('Повторить'),
                       ),
                     ],
                   ),
                 ),
-                data: (user) => RefreshIndicator(
-                  onRefresh: () async {
-                    ref.invalidate(roomProvider(widget.roomId));
-                    ref.refresh(currentUserProvider);
-                  },
-                  child: SingleChildScrollView(
+                data: (user) => Container(
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage('assets/images/schedule/schedule_bg.png'),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      ref.invalidate(roomProvider(widget.roomId));
+                      // ignore: unused_result
+                      ref.refresh(currentUserProvider);
+                    },
+                    child: SingleChildScrollView(
                     padding: AppSizes.screenPadding,
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Column(
@@ -346,6 +370,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                         
                         // Команды
                         _buildTeamsCard(room),
+                        
+                        // Выбор команды-победителя теперь доступен через отдельный экран по уведомлению
                         
                         // Кнопки действий
                         if (user != null) ...[
@@ -366,6 +392,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                   ),
                 ),
               ),
+            ),
       ),
     );
   }
@@ -463,6 +490,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       ),
     );
   }
+
+
 
   Widget _buildTeamsCard(RoomModel room) {
     return Card(
@@ -602,12 +631,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     
     // Проверяем, авторизован ли пользователь
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Войдите в систему для просмотра игроков'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+      ErrorHandler.showWarning(context, 'Войдите в систему для просмотра игроков');
       return;
     }
 
@@ -650,10 +674,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
               return PlayerCard(
                 player: player,
                 compact: true,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _showPlayerProfile(player);
-                },
+                // Убираем переопределение onTap, используем стандартное поведение
               );
             },
           ),
@@ -668,113 +689,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     );
   }
 
-  void _showPlayerProfile(UserModel player) async {
-    final currentUser = ref.read(currentUserProvider).value;
-    final canViewEmail = currentUser?.role == UserRole.organizer || currentUser?.role == UserRole.admin;
-    
-    // Пока убираем загрузку предстоящих игр
-    final upcomingGames = <GameRef>[];
-    
-    // Проверяем статус дружбы
-    bool isFriend = false;
-    bool isOwnProfile = false;
-    if (currentUser != null) {
-      if (currentUser.id == player.id) {
-        isOwnProfile = true;
-      } else {
-        final userService = ref.read(userServiceProvider);
-        final friends = await userService.getFriends(currentUser.id);
-        isFriend = friends.any((friend) => friend.id == player.id);
-      }
-    }
-    
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(player.name),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Аватар
-              Center(
-                child: CircleAvatar(
-                  radius: 40,
-                  backgroundImage: player.photoUrl != null 
-                      ? NetworkImage(player.photoUrl!) 
-                      : null,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                  child: player.photoUrl == null 
-                      ? Text(
-                          _getInitials(player.name),
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 24,
-                          ),
-                        )
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Основная информация
-              if (canViewEmail) _buildProfileRow('Email', player.email),
-              _buildProfileRow('Роль', _getRoleDisplayName(player.role)),
-              _buildProfileRow('Рейтинг', player.rating.toString()),
-              _buildProfileRow('Всего очков', player.totalScore.toString()),
-              _buildProfileRow('Игр сыграно', player.gamesPlayed.toString()),
-              _buildProfileRow('Процент побед', '${player.winRate.toStringAsFixed(1)}%'),
-              
-              if (player.bio.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'О себе:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(player.bio),
-              ],
-              
-              // Предстоящие игры
-              if (upcomingGames.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text(
-                  'Предстоящие игры:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...upcomingGames.take(3).map((game) => _buildUpcomingGameItem(game)),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          // Кнопка добавления в друзья (только если это не свой профиль)
-          if (!isOwnProfile && currentUser != null) ...[
-            TextButton.icon(
-              onPressed: () => _handleFriendAction(currentUser!, player, isFriend),
-              icon: Icon(
-                isFriend ? Icons.person_remove : Icons.person_add,
-                size: 18,
-              ),
-              label: Text(isFriend ? 'Удалить из друзей' : 'Добавить в друзья'),
-              style: TextButton.styleFrom(
-                foregroundColor: isFriend ? AppColors.error : AppColors.primary,
-              ),
-            ),
-          ],
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Закрыть'),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildUpcomingGameItem(GameRef game) {
     return Padding(
@@ -948,15 +863,28 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                                 }
                               }
                               
-                              return Text(
-                                'Покинуть команду "${userTeam.name}"',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                                textAlign: TextAlign.center,
-                              );
+                              // Проверяем, является ли пользователь организатором команды в командном режиме
+                              if (room.isTeamMode && userTeam.ownerId == user.id) {
+                                return Text(
+                                  'Покинуть матч (вся команда "${userTeam.name}")',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                );
+                              } else {
+                                return Text(
+                                  'Покинуть команду "${userTeam.name}"',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                );
+                              }
                             },
                           ),
                   ),
@@ -978,12 +906,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                       return () {
                         // Дополнительная проверка для командного режима с уведомлением
                         if (room.isTeamMode && user.role == UserRole.user && !room.participants.contains(user.id)) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Вы можете участвовать в командных играх только через организатора вашей команды'),
-                              backgroundColor: AppColors.warning,
-                            ),
-                          );
+                          ErrorHandler.showWarning(context, 'Вы можете участвовать в командных играх только через организатора вашей команды');
                           return;
                         }
                         _selectTeam();
@@ -1162,38 +1085,24 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         await userService.removeFriend(currentUser.id, player.id);
         if (mounted) {
           Navigator.of(context).pop(); // Закрываем диалог
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${player.name} удален из друзей'),
-              backgroundColor: AppColors.warning,
-            ),
-          );
+          ErrorHandler.friendRemoved(context, player.name);
         }
       } else {
         // Добавляем в друзья
         await userService.addFriend(currentUser.id, player.id);
         if (mounted) {
           Navigator.of(context).pop(); // Закрываем диалог
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${player.name} добавлен в друзья'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ErrorHandler.friendAdded(context, player.name);
         }
       }
       
       // Обновляем провайдер пользователя для обновления списка друзей
+      // ignore: unused_result
       ref.refresh(currentUserProvider);
       
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }

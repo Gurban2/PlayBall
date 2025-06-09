@@ -34,14 +34,12 @@ lib/
 │   ├── constants/
 │   │   └── constants.dart          # Константы: цвета, размеры, строки, маршруты
 │   ├── utils/
-│   │   ├── validators.dart         # Валидация форм
-│   │   └── permissions_manager.dart # Управление правами доступа
+│   │   └── validators.dart         # Валидация форм
 │   ├── errors/
 │   │   └── error_handler.dart      # Обработка ошибок
 │   ├── router/
 │   │   └── app_router.dart         # Маршрутизация (GoRouter)
-│   ├── providers.dart              # Глобальные провайдеры (Riverpod)
-│   └── core.dart                   # Barrel export
+│   └── providers.dart              # Глобальные провайдеры (Riverpod)
 │
 ├── features/                       # Функциональные модули
 │   ├── auth/                       # 🔐 Аутентификация
@@ -252,17 +250,18 @@ final teamsProvider = StreamProvider.family<List<TeamModel>, String>((ref, roomI
 - **Organizer** - организатор игр
 - **Admin** - администратор
 
-### Проверка прав доступа
+### Система времени игр
 ```dart
-class PermissionsManager {
-  static bool canEditRoom(UserModel user, RoomModel room) {
-    return user.role == UserRole.admin || room.organizerId == user.id;
+class GameTimeUtils {
+  static bool canJoinGame(RoomModel room) {
+    // Блокирует присоединение за 5 минут до начала
+    final joinCutoffTime = room.startTime.subtract(Duration(minutes: 5));
+    return DateTime.now().isBefore(joinCutoffTime);
   }
   
-  static bool canJoinRoom(UserModel user, RoomModel room) {
-    return room.status == RoomStatus.planned && 
-           !room.isFull && 
-           !room.participants.contains(user.id);
+  static bool shouldAutoStartGame(RoomModel room) {
+    // Автоматически активирует игру в назначенное время
+    return DateTime.now().isAfter(room.startTime);
   }
 }
 ```

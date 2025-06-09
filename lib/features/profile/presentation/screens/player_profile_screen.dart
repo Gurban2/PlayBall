@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../../features/auth/domain/entities/user_model.dart';
 import '../../../../core/providers.dart';
 import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
@@ -23,7 +24,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
 
 class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
   UserModel? _player;
-  bool _isFriend = false;
+
   String _friendshipStatus = 'none'; // 'none', 'friends', 'request_sent', 'request_received', 'self'
   bool _isLoading = true;
   String? _error;
@@ -46,7 +47,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
         throw Exception('Пользователь не авторизован');
       }
 
-      print('🔍 Загружаем данные игрока: ${widget.playerId}');
+      debugPrint('🔍 Загружаем данные игрока: ${widget.playerId}');
       
       final userService = ref.read(userServiceProvider);
       final player = await userService.getUserById(widget.playerId);
@@ -55,24 +56,24 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
         throw Exception('Игрок не найден');
       }
 
-      print('👤 Игрок найден: ${player.name}');
+      debugPrint('👤 Игрок найден: ${player.name}');
 
       // Проверяем статус дружбы
       final friendshipStatus = await userService.getFriendshipStatus(currentUser.id, widget.playerId);
 
-      print('👥 Статус дружбы: $friendshipStatus');
+      debugPrint('👥 Статус дружбы: $friendshipStatus');
 
       if (mounted) {
         setState(() {
           _player = player;
           _friendshipStatus = friendshipStatus;
-          _isFriend = friendshipStatus == 'friends';
+
           _isLoading = false;
         });
-        print('✅ Состояние обновлено, загрузка завершена');
+        debugPrint('✅ Состояние обновлено, загрузка завершена');
       }
     } catch (e) {
-      print('❌ Ошибка загрузки: $e');
+      debugPrint('❌ Ошибка загрузки: $e');
       if (mounted) {
         setState(() {
           _error = 'Ошибка загрузки: ${e.toString()}';
@@ -95,16 +96,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
           await userService.removeFriend(currentUser.id, _player!.id);
           setState(() {
             _friendshipStatus = 'none';
-            _isFriend = false;
+
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${_player!.name} удален из друзей'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ErrorHandler.friendRemoved(context, _player!.name);
           }
           break;
 
@@ -116,12 +112,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Запрос дружбы отправлен ${_player!.name}'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ErrorHandler.friendRequestSent(context, _player!.name);
           }
           break;
 
@@ -133,12 +124,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Запрос дружбы отменен'),
-                backgroundColor: AppColors.warning,
-              ),
-            );
+            ErrorHandler.friendRequestCancelled(context, _player!.name);
           }
           break;
 
@@ -149,12 +135,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -196,16 +177,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
           await userService.acceptFriendRequest(request.id);
           setState(() {
             _friendshipStatus = 'friends';
-            _isFriend = true;
+
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${_player!.name} добавлен в друзья'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ErrorHandler.friendRequestAccepted(context, _player!.name);
           }
         } else {
           // Отклоняем запрос
@@ -215,22 +191,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Запрос дружбы отклонен'),
-                backgroundColor: AppColors.warning,
-              ),
-            );
+            ErrorHandler.friendRequestRejected(context, _player!.name);
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }
@@ -264,19 +230,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
     }
   }
 
-  Color _getFriendButtonColor() {
-    switch (_friendshipStatus) {
-      case 'friends':
-        return AppColors.error;
-      case 'request_sent':
-        return AppColors.warning;
-      case 'request_received':
-        return AppColors.success;
-      case 'none':
-      default:
-        return AppColors.primary;
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -352,7 +306,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                                   children: [
                                     CircleAvatar(
                                       radius: 50,
-                                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                                       backgroundImage: _player!.photoUrl != null
                                           ? NetworkImage(_player!.photoUrl!)
                                           : null,
@@ -390,7 +344,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                                                     vertical: 4,
                                                   ),
                                                   decoration: BoxDecoration(
-                                                    color: AppColors.primary.withOpacity(0.1),
+                                                    color: AppColors.primary.withValues(alpha: 0.1),
                                                     borderRadius: BorderRadius.circular(12),
                                                   ),
                                                   child: const Text(
@@ -437,10 +391,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                                                   vertical: 6,
                                                 ),
                                                 decoration: BoxDecoration(
-                                                  color: AppColors.secondary.withOpacity(0.1),
+                                                  color: AppColors.secondary.withValues(alpha: 0.1),
                                                   borderRadius: BorderRadius.circular(12),
                                                   border: Border.all(
-                                                    color: AppColors.secondary.withOpacity(0.3),
+                                                    color: AppColors.secondary.withValues(alpha: 0.3),
                                                   ),
                                                 ),
                                                 child: Row(
@@ -566,69 +520,34 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
 
                                 const SizedBox(height: 20),
 
-                                // Рейтинг и баллы
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Container(
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.warning.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Icon(Icons.star, color: AppColors.warning, size: 28),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              _player!.rating.toStringAsFixed(1),
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const Text(
-                                              'Рейтинг',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: AppColors.textSecondary,
-                                              ),
-                                            ),
-                                          ],
+                                // Только баллы
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.score, color: AppColors.primary, size: 28),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        _player!.totalScore.toString(),
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Container(
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Icon(Icons.score, color: AppColors.primary, size: 28),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              _player!.totalScore.toString(),
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const Text(
-                                              'Баллы',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: AppColors.textSecondary,
-                                              ),
-                                            ),
-                                          ],
+                                      const Text(
+                                        'Баллы',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -696,10 +615,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: AppColors.warning.withOpacity(0.1),
+                                          color: AppColors.warning.withValues(alpha: 0.1),
                                           borderRadius: BorderRadius.circular(16),
                                           border: Border.all(
-                                            color: AppColors.warning.withOpacity(0.3),
+                                            color: AppColors.warning.withValues(alpha: 0.3),
                                           ),
                                         ),
                                         child: Text(
@@ -796,7 +715,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       margin: const EdgeInsets.symmetric(horizontal: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -958,7 +877,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
               backgroundImage: friend.photoUrl != null
                   ? NetworkImage(friend.photoUrl!)
                   : null,
-              backgroundColor: AppColors.primary.withOpacity(0.1),
+              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
               child: friend.photoUrl == null
                   ? Text(
                       _getInitials(friend.name),
@@ -985,19 +904,27 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(
-                        'Игр: ${friend.gamesPlayed}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          'Игр: ${friend.gamesPlayed}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -1008,7 +935,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -1034,7 +961,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
           children: [
             Icon(Icons.people, color: AppColors.primary),
             const SizedBox(width: 8),
-            Text('Друзья ${_player!.name} (${friends.length})'),
+            Expanded(
+              child: Text(
+                'Друзья ${_player!.name} (${friends.length})',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         content: SizedBox(
@@ -1078,7 +1010,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                               backgroundImage: friend.photoUrl != null
                                   ? NetworkImage(friend.photoUrl!)
                                   : null,
-                              backgroundColor: AppColors.primary.withOpacity(0.1),
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                               child: friend.photoUrl == null
                                   ? Text(
                                       _getInitials(friend.name),
@@ -1103,25 +1035,33 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'Игр: ${friend.gamesPlayed}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                                    Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          'Игр: ${friend.gamesPlayed}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          'Винрейт: ${friend.winRate.toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                                 ],
                               ),
                             ),
@@ -1144,12 +1084,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen> {
 
   void _navigateToTeam(UserModel player) {
     if (player.teamId == null || player.teamName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Информация о команде недоступна'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      ErrorHandler.showError(context, 'Информация о команде недоступна');
       return;
     }
 

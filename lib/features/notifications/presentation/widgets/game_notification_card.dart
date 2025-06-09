@@ -21,7 +21,7 @@ class GameNotificationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: notification.isRead ? 1 : 4,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
@@ -35,19 +35,9 @@ class GameNotificationCard extends StatelessWidget {
         onTap: () => _handleTap(context),
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            gradient: notification.isRead 
-                ? null 
-                : LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      _getNotificationColor().withOpacity(0.05),
-                      _getNotificationColor().withOpacity(0.02),
-                    ],
-                  ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -57,17 +47,17 @@ class GameNotificationCard extends StatelessWidget {
                 children: [
                   // Иконка типа уведомления
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: _getNotificationColor().withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
+                      color: _getNotificationColor().withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       notification.icon,
-                      style: const TextStyle(fontSize: 20),
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   
                   // Заголовок и время
                   Expanded(
@@ -77,18 +67,18 @@ class GameNotificationCard extends StatelessWidget {
                         Text(
                           notification.title,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: notification.isRead 
                                 ? FontWeight.w600 
                                 : FontWeight.bold,
-                            color: _getNotificationColor(),
+                            color: AppColors.text,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 1),
                         Text(
                           _formatDateTime(notification.createdAt),
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 10,
                             color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
                           ),
@@ -100,8 +90,8 @@ class GameNotificationCard extends StatelessWidget {
                   // Индикатор непрочитанного
                   if (!notification.isRead)
                     Container(
-                      width: 8,
-                      height: 8,
+                      width: 6,
+                      height: 6,
                       decoration: BoxDecoration(
                         color: _getNotificationColor(),
                         shape: BoxShape.circle,
@@ -110,81 +100,84 @@ class GameNotificationCard extends StatelessWidget {
                 ],
               ),
               
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               
               // Сообщение
               Text(
                 notification.message,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 12,
                   color: AppColors.text,
                   fontWeight: notification.isRead 
                       ? FontWeight.normal 
                       : FontWeight.w500,
-                  height: 1.4,
+                  height: 1.3,
                 ),
               ),
               
               // Дополнительная информация
               if (notification.scheduledDateTime != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 _buildScheduleInfo(),
               ],
               
               // Дополнительные данные
               if (notification.additionalData != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 _buildAdditionalInfo(),
               ],
               
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               
               // Кнопки действий
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Кнопка "Перейти к игре"
+                  // Кнопка "Перейти к игре" или "Оценить игроков"
                   TextButton.icon(
-                    onPressed: () => _navigateToRoom(context),
-                    icon: const Icon(Icons.sports_volleyball, size: 16),
-                    label: const Text('К игре'),
+                    onPressed: () {
+                      // Удаляем уведомление после просмотра
+                      if (onDelete != null) {
+                        onDelete!();
+                      }
+                      _navigateToRoom(context);
+                    },
+                    icon: Icon(
+                      notification.type == GameNotificationType.evaluationRequired 
+                          ? Icons.star 
+                          : Icons.sports_volleyball, 
+                      size: 14,
+                    ),
+                    label: Text(
+                      notification.type == GameNotificationType.evaluationRequired 
+                          ? 'Оценить' 
+                          : 'К игре',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     style: TextButton.styleFrom(
                       foregroundColor: _getNotificationColor(),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                     ),
                   ),
                   
-                  const SizedBox(width: 8),
-                  
-                  // Кнопка "Отметить как прочитанное"
-                  if (!notification.isRead && onMarkAsRead != null)
-                    TextButton.icon(
-                      onPressed: onMarkAsRead,
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Прочитано'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.success,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                      ),
-                    ),
+
                   
                   // Кнопка удаления
                   if (onDelete != null) ...[
-                    const SizedBox(width: 8),
-                    IconButton(
+                    const SizedBox(width: 6),
+                    TextButton.icon(
                       onPressed: onDelete,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      color: AppColors.textSecondary,
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
+                      icon: const Icon(Icons.close, size: 14),
+                      label: const Text('Скрыть', style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.textSecondary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                       ),
                     ),
                   ],
@@ -202,10 +195,10 @@ class GameNotificationCard extends StatelessWidget {
     if (notification.scheduledDateTime == null) return const SizedBox.shrink();
     
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppColors.divider),
       ),
       child: Row(
@@ -213,14 +206,14 @@ class GameNotificationCard extends StatelessWidget {
         children: [
           Icon(
             Icons.schedule,
-            size: 14,
+            size: 12,
             color: AppColors.textSecondary,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 3),
           Text(
             _formatDateTime(notification.scheduledDateTime!),
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 10,
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,
             ),
@@ -236,19 +229,19 @@ class GameNotificationCard extends StatelessWidget {
     if (data == null || data.isEmpty) return const SizedBox.shrink();
     
     return Wrap(
-      spacing: 8,
-      runSpacing: 4,
+      spacing: 6,
+      runSpacing: 3,
       children: data.entries.map((entry) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
-            color: _getNotificationColor().withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
+            color: _getNotificationColor().withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Text(
             '${_formatKey(entry.key)}: ${entry.value}',
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: _getNotificationColor(),
               fontWeight: FontWeight.w600,
             ),
@@ -302,9 +295,9 @@ class GameNotificationCard extends StatelessWidget {
 
   /// Обработчик нажатия на карточку
   void _handleTap(BuildContext context) {
-    // Отмечаем как прочитанное при нажатии
-    if (!notification.isRead && onMarkAsRead != null) {
-      onMarkAsRead!();
+    // Удаляем уведомление после просмотра
+    if (onDelete != null) {
+      onDelete!();
     }
     
     // Переходим к игре
@@ -313,7 +306,16 @@ class GameNotificationCard extends StatelessWidget {
 
   /// Переход к странице игры
   void _navigateToRoom(BuildContext context) {
-    context.push('/room/${notification.roomId}');
+    if (notification.type == GameNotificationType.evaluationRequired) {
+      // Для уведомлений об оценке переходим на экран оценки
+      context.push('/game-evaluation/${notification.roomId}');
+    } else if (notification.type == GameNotificationType.winnerSelectionRequired) {
+      // Для уведомлений о выборе победителя переходим на экран выбора победителя
+      context.push('/winner-selection/${notification.roomId}');
+    } else {
+      // Для остальных уведомлений переходим к комнате
+      context.push('/room/${notification.roomId}');
+    }
   }
 }
 

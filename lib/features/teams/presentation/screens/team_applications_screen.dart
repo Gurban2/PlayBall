@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../domain/entities/team_application_model.dart';
-import '../../../auth/domain/entities/user_model.dart';
+
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
-import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
+import '../../../../core/errors/error_handler.dart';
+import '../../../../shared/widgets/dialogs/unified_dialogs.dart';
+import '../../domain/entities/team_application_model.dart';
 
 class TeamApplicationsScreen extends ConsumerStatefulWidget {
   const TeamApplicationsScreen({super.key});
@@ -17,15 +17,12 @@ class TeamApplicationsScreen extends ConsumerStatefulWidget {
 class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<TeamApplicationModel> _outgoingApplications = [];
+  List<TeamApplicationModel> _applications = [];
   bool _isLoading = true;
-  UserModel? _currentUser;
 
   @override
   void initState() {
     super.initState();
-    _currentUser = ref.read(currentUserProvider).value;
-    // Только одна вкладка для всех - исходящие заявки
     _tabController = TabController(length: 1, vsync: this);
     _loadApplications();
   }
@@ -44,23 +41,17 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
     try {
       final user = ref.read(currentUserProvider).value;
       if (user != null) {
-        _currentUser = user;
         final teamService = ref.read(teamServiceProvider);
         
         // Загружаем только исходящие заявки
         final outgoingApplications = await teamService.getOutgoingTeamApplications(user.id);
         setState(() {
-          _outgoingApplications = outgoingApplications;
+          _applications = outgoingApplications;
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки заявок: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, 'Ошибка загрузки заявок: $e');
       }
     } finally {
       setState(() {
@@ -85,7 +76,7 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
   }
 
   Widget _buildOutgoingTab() {
-    if (_outgoingApplications.isEmpty) {
+    if (_applications.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -120,9 +111,9 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
       onRefresh: _loadApplications,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: _outgoingApplications.length,
+        itemCount: _applications.length,
         itemBuilder: (context, index) {
-          return _buildOutgoingApplicationCard(_outgoingApplications[index]);
+          return _buildOutgoingApplicationCard(_applications[index]);
         },
       ),
     );
@@ -145,7 +136,7 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.secondary.withOpacity(0.1),
+                    color: AppColors.secondary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -186,7 +177,7 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.1),
+                    color: AppColors.warning.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
@@ -272,26 +263,9 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
   }
 
   Future<void> _cancelApplication(TeamApplicationModel application) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await UnifiedDialogs.showCancelApplication(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Отменить заявку'),
-        content: Text('Отменить заявку в команду "${application.teamName}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Нет'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Отменить заявку'),
-          ),
-        ],
-      ),
+      teamName: application.teamName,
     );
 
     if (confirmed == true) {
@@ -300,23 +274,13 @@ class _TeamApplicationsScreenState extends ConsumerState<TeamApplicationsScreen>
         await teamService.cancelTeamApplication(application.teamId, application.fromUserId);
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Заявка в команду "${application.teamName}" отменена'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ErrorHandler.cancelled(context, 'Заявка в команду "${application.teamName}"');
           
           await _loadApplications();
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка: $e'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }

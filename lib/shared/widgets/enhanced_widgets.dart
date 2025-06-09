@@ -124,8 +124,8 @@ class _EnhancedButtonState extends State<EnhancedButton>
           foregroundColor: widget.customColor != null 
               ? Colors.white 
               : colorScheme.onPrimary,
-          disabledBackgroundColor: colorScheme.onSurface.withOpacity(0.12),
-          disabledForegroundColor: colorScheme.onSurface.withOpacity(0.38),
+          disabledBackgroundColor: colorScheme.onSurface.withValues(alpha: 0.12),
+          disabledForegroundColor: colorScheme.onSurface.withValues(alpha: 0.38),
           padding: _getButtonPadding(),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_getBorderRadius()),
@@ -147,7 +147,7 @@ class _EnhancedButtonState extends State<EnhancedButton>
         label: _buildLabel(),
         style: OutlinedButton.styleFrom(
           foregroundColor: widget.customColor ?? colorScheme.primary,
-          disabledForegroundColor: colorScheme.onSurface.withOpacity(0.38),
+          disabledForegroundColor: colorScheme.onSurface.withValues(alpha: 0.38),
           padding: _getButtonPadding(),
           side: BorderSide(
             color: widget.customColor ?? colorScheme.outline,
@@ -171,7 +171,7 @@ class _EnhancedButtonState extends State<EnhancedButton>
         label: _buildLabel(),
         style: TextButton.styleFrom(
           foregroundColor: widget.customColor ?? colorScheme.primary,
-          disabledForegroundColor: colorScheme.onSurface.withOpacity(0.38),
+          disabledForegroundColor: colorScheme.onSurface.withValues(alpha: 0.38),
           padding: _getButtonPadding(),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_getBorderRadius()),
@@ -365,8 +365,8 @@ class _EnhancedCardState extends State<EnhancedCard>
               onTap: widget.onTap,
               onHover: _onHover,
               borderRadius: BorderRadius.circular(16),
-              splashColor: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-              highlightColor: Theme.of(context).colorScheme.primary.withOpacity(0.04),
+              splashColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+              highlightColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.04),
               child: Container(
                 padding: widget.padding ?? const EdgeInsets.all(16),
                 child: widget.child,
@@ -751,7 +751,7 @@ class _StatsCardState extends State<StatsCard>
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: cardColor.withOpacity(0.1),
+                          color: cardColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -765,7 +765,7 @@ class _StatsCardState extends State<StatsCard>
                         Icon(
                           Icons.arrow_forward_ios,
                           size: 16,
-                          color: colorScheme.onSurface.withOpacity(0.6),
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                     ],
                   ),
@@ -781,7 +781,7 @@ class _StatsCardState extends State<StatsCard>
                   Text(
                     widget.title,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface.withOpacity(0.7),
+                      color: colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
                   if (widget.subtitle != null) ...[
@@ -789,7 +789,7 @@ class _StatsCardState extends State<StatsCard>
                     Text(
                       widget.subtitle!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.5),
+                        color: colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ),
                   ],

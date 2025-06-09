@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../auth/domain/entities/user_model.dart';
-import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/providers.dart';
+import '../../../../core/errors/error_handler.dart';
+import '../../../../shared/widgets/universal_card.dart';
+import '../../../auth/domain/entities/user_model.dart';
 import '../widgets/player_friends_card.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -14,70 +16,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen>
-    with SingleTickerProviderStateMixin {
-  final TextEditingController _bioController = TextEditingController();
-  bool _isEditingBio = false;
-  List<GameRef> _upcomingGames = [];
-  bool _isLoadingGames = false;
-
-  TabController? _tabController;
-  UserRole? _lastUserRole;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUpcomingGames();
-  }
-
-  @override
-  void dispose() {
-    _bioController.dispose();
-    _tabController?.dispose();
-    super.dispose();
-  }
-
-  void _updateTabController(UserRole? userRole) {
-    final tabCount = 1; // Всегда только одна вкладка - профиль
-
-    if (_tabController == null || _lastUserRole != userRole) {
-      _tabController?.dispose();
-      _tabController = TabController(length: tabCount, vsync: this);
-      _lastUserRole = userRole;
-    }
-  }
-
-  Future<void> _loadUpcomingGames() async {
-    setState(() {
-      _isLoadingGames = true;
-    });
-
-    try {
-      final user = ref.read(currentUserProvider).value;
-      if (user != null) {
-        // Пока оставляем пустой список, метод getUpcomingGamesForUser можно реализовать позже
-        setState(() {
-          _upcomingGames = [];
-        });
-      }
-    } catch (e) {
-      debugPrint('Ошибка загрузки предстоящих игр: $e');
-    } finally {
-      setState(() {
-        _isLoadingGames = false;
-      });
-    }
-  }
-
-  Future<List<UserModel>> _loadFriends(String userId) async {
-    try {
-      final userService = ref.read(userServiceProvider);
-      return await userService.getFriends(userId);
-    } catch (e) {
-      debugPrint('Ошибка загрузки друзей: $e');
-      return [];
-    }
-  }
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
@@ -85,16 +24,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     return userAsync.when(
       loading: () => const Scaffold(
+        backgroundColor: Color(0xFF1A1B2E),
         body: Center(child: CircularProgressIndicator()),
       ),
       error: (error, stack) => Scaffold(
+        backgroundColor: Color(0xFF1A1B2E),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, size: 64, color: AppColors.error),
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
-              Text('Ошибка: $error'),
+              Text('Ошибка: $error', style: const TextStyle(color: Colors.white)),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => ref.refresh(currentUserProvider),
@@ -107,615 +48,327 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       data: (user) {
         if (user == null) {
           return const Scaffold(
-            body: Center(child: Text('Пользователь не найден')),
+            backgroundColor: Color(0xFF1A1B2E),
+            body: Center(child: Text('Пользователь не найден', style: TextStyle(color: Colors.white))),
           );
         }
 
-        // Обновляем TabController для текущего пользователя
-        _updateTabController(user.role);
+
 
         return Scaffold(
-          backgroundColor: AppColors.background,
-          body: TabBarView(
-            controller: _tabController!,
-            children: [
-              // Вкладка профиля
-              _buildProfileTab(user),
+          backgroundColor: const Color(0xFF1A1B2E),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1A1B2E),
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              'Profile',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            centerTitle: true,
+            actions: [
+              Container(
+                margin: const EdgeInsets.only(right: 16),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF00C7), Color(0xFF7B2CBF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.notifications, color: Colors.white, size: 20),
+              ),
             ],
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Профиль заголовок с аватаром
+                _buildProfileHeader(user),
+                const SizedBox(height: 24),
+                
+                // Кнопки Deposit и Withdraw
+                _buildActionButtons(),
+                const SizedBox(height: 24),
+                
+                // Статистические показатели
+                _buildStatsRow(user),
+                const SizedBox(height: 32),
+                
+                // Меню опций
+                _buildMenuOptions(),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildProfileTab(UserModel user) {
-    return RefreshIndicator(
-      onRefresh: () async => ref.refresh(currentUserProvider),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          children: [
-            // Основная карточка профиля
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  children: [
-                    // Аватар и базовая информация
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor:
-                              AppColors.primary.withValues(alpha: 0.1),
-                          backgroundImage: user.photoUrl != null
-                              ? NetworkImage(user.photoUrl!)
-                              : null,
-                          child: user.photoUrl == null
-                              ? Text(
-                                  _getInitials(user.name),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primary,
-                                  ),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      user.name,
-                                      style: AppTextStyles.heading2,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.logout),
-                                    color: AppColors.error,
-                                    onPressed: () => _logout(context, ref),
-                                    iconSize: 20,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.circle,
-                                    size: 12,
-                                    color: _getStatusColor(user.status),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    user.statusDisplayName,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: _getStatusColor(user.status),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // Информация о команде
-                              if (user.teamName != null) ...[
-                                const SizedBox(height: 6),
-                                GestureDetector(
-                                  onTap: () => _navigateToTeamMembers(user),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal:4,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.secondary
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: AppColors.secondary
-                                            .withValues(alpha: 0.3),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.groups,
-                                          color: AppColors.secondary,
-                                          size: 14,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            user.teamName!,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: AppColors.secondary,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        if (user.isTeamCaptain) ...[
-                                          const SizedBox(width: 4),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 4,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.warning,
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            ),
-                                            child: const Text(
-                                              'К',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 8,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        const SizedBox(width: 4),
-                                        Icon(
-                                          Icons.arrow_forward_ios,
-                                          color: AppColors.secondary,
-                                          size: 10,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Описание игрока
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _isEditingBio
-                                ? TextField(
-                                    controller: _bioController,
-                                    maxLength: 64,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Расскажите о себе...',
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                    ),
-                                    style: const TextStyle(fontSize: 12),
-                                  )
-                                : Text(
-                                    user.bio.isEmpty
-                                        ? 'Расскажите о себе...'
-                                        : user.bio,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: user.bio.isEmpty
-                                          ? AppColors.textSecondary
-                                          : AppColors.text,
-                                    ),
-                                  ),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              _isEditingBio ? Icons.check : Icons.edit,
-                              size: 14,
-                            ),
-                            onPressed: () => _toggleBioEdit(user),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Основная статистика в компактном виде
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Flexible(
-                          child: _buildCompactStat(
-                            user.gamesPlayed.toString(),
-                            'Игр',
-                            Icons.sports_volleyball,
-                          ),
-                        ),
-                        Flexible(
-                          child: _buildCompactStat(
-                            user.wins.toString(),
-                            'Побед',
-                            Icons.emoji_events,
-                          ),
-                        ),
-                        Flexible(
-                          child: _buildCompactStat(
-                            user.losses.toString(),
-                            'Поражений',
-                            Icons.close,
-                          ),
-                        ),
-                        Flexible(
-                          child: _buildCompactStat(
-                            user.totalScore.toString(),
-                            'Очки',
-                            Icons.star_rate,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Рейтинг и баллы
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.warning.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.star,
-                                    color: AppColors.warning, size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  user.rating.toStringAsFixed(1),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.star_rate,
-                                    color: AppColors.primary, size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  user.totalScore.toString(),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Кнопка "Расписание игр" для всех пользователей
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: InkWell(
-                onTap: () => context.push(AppRoutes.schedule),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.secondary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.schedule,
-                          color: AppColors.secondary,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Расписание игр',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              'Просмотр всех игр и планирование времени',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        color: AppColors.textSecondary,
-                        size: 14,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Dashboard для организатора
-            if (user.role == UserRole.organizer ||
-                user.role == UserRole.admin) ...[
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: InkWell(
-                  onTap: () => context.push(AppRoutes.organizerDashboard),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.dashboard,
-                            color: AppColors.primary,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                user.role == UserRole.admin
-                                    ? 'Admin Dashboard'
-                                    : 'Dashboard организатора',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                user.role == UserRole.admin
-                                    ? 'Управление системой, пользователями'
-                                    : 'Статистика игр, управление командами',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: AppColors.textSecondary,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSizes.largeSpace),
-            ],
-
-            // Карточка друзей
-            PlayerFriendsCard(
-              player: user,
-              loadFriends: () => _loadFriends(user.id),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _logout(BuildContext context, WidgetRef ref) async {
-    try {
-      final authService = ref.read(authServiceProvider);
-      await authService.signOut();
-      if (context.mounted) {
-        context.go(AppRoutes.login);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка выхода: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _toggleBioEdit(UserModel user) {
-    if (_isEditingBio) {
-      _saveBio(user);
-    } else {
-      _bioController.text = user.bio;
-      setState(() {
-        _isEditingBio = true;
-      });
-    }
-  }
-
-  void _saveBio(UserModel user) async {
-    if (_bioController.text.length > 64) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Описание не должно превышать 64 символа'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(user.id).update({
-        'bio': _bioController.text.trim(),
-        'updatedAt': Timestamp.now(),
-      });
-
-      ref.invalidate(currentUserProvider);
-
-      if (mounted) {
-        setState(() {
-          _isEditingBio = false;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Описание обновлено'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  Color _getStatusColor(PlayerStatus status) {
-    switch (status) {
-      case PlayerStatus.lookingForGame:
-        return AppColors.success;
-      case PlayerStatus.freeTonight:
-        return AppColors.warning;
-      case PlayerStatus.unavailable:
-        return AppColors.error;
-    }
-  }
-
-  Widget _buildCompactStat(String value, String label, IconData icon) {
+  Widget _buildProfileHeader(UserModel user) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: AppColors.primary),
-        const SizedBox(height: 2),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+        // Аватар
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(color: Colors.white.withOpacity(0.2), width: 2),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(38),
+            child: user.photoUrl != null
+                ? Image.network(
+                    user.photoUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => _buildDefaultAvatar(user),
+                  )
+                : _buildDefaultAvatar(user),
           ),
         ),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 9,
-              color: AppColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
+        const SizedBox(height: 16),
+        
+        // Имя
+        Text(
+          user.name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        
+        // Баланс (заглушка)
+        Text(
+          '\$123,456.00',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
           ),
         ),
       ],
     );
   }
 
-  String _getInitials(String name) {
-    final parts = name.split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    } else if (name.isNotEmpty) {
-      return name[0].toUpperCase();
-    }
-    return '';
-  }
-
-  void _navigateToTeamMembers(UserModel user) async {
-    if (user.teamId == null || user.teamName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Информация о команде недоступна'),
-          backgroundColor: AppColors.error,
+  Widget _buildDefaultAvatar(UserModel user) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF00C7), Color(0xFF7B2CBF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-      );
-      return;
-    }
+        borderRadius: BorderRadius.circular(38),
+      ),
+      child: Center(
+        child: Text(
+          _getInitials(user.name),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
 
-    // Проверяем роль пользователя
-    if (user.role == UserRole.organizer || user.role == UserRole.admin) {
-      // Организаторы и админы идут на управление командой
-      context.push(
-          '/team-members/${user.teamId}?teamName=${Uri.encodeComponent(user.teamName!)}');
-    } else {
-      // Обычные пользователи идут на просмотр команды
-      context.push(
-          '/team-view/${user.teamId}?teamName=${Uri.encodeComponent(user.teamName!)}');
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Center(
+              child: Text(
+                'Deposit',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF4ECDC4),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Center(
+              child: Text(
+                'Withdraw',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsRow(UserModel user) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _buildStatItem('Prediction', '3.45', const Color(0xFFFF00C7)),
+        _buildStatItem('Wins', user.wins.toString(), const Color(0xFFFF00C7)),
+        _buildStatItem('Winrate', '${user.winRate.toStringAsFixed(0)}%', const Color(0xFFFF00C7)),
+        _buildStatItem('Profit', '\$789', const Color(0xFFFF00C7)),
+      ],
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.7),
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: color, width: 2),
+          ),
+          child: Center(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMenuOptions() {
+    final menuItems = [
+      {'icon': Icons.emoji_events, 'title': 'Рейтинг'},
+      {'icon': Icons.people, 'title': 'Друзья'},
+      {'icon': Icons.edit, 'title': 'Редактировать профиль'},
+      {'icon': Icons.groups, 'title': 'Команда'},
+      {'icon': Icons.sports_volleyball, 'title': 'Мои игры'},
+      {'icon': Icons.settings, 'title': 'Настройки'},
+    ];
+
+    return Column(
+      children: menuItems.map((item) => _buildMenuItem(
+        item['icon'] as IconData,
+        item['title'] as String,
+      )).toList(),
+    );
+  }
+
+  Widget _buildMenuItem(IconData icon, String title) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        trailing: Icon(
+          Icons.arrow_forward_ios,
+          color: Colors.white.withOpacity(0.5),
+          size: 16,
+        ),
+        onTap: () => _handleMenuItemTap(title),
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    } else if (parts.isNotEmpty) {
+      return parts[0][0].toUpperCase();
+    }
+    return 'U';
+  }
+
+  void _handleMenuItemTap(String title) {
+    switch (title) {
+      case 'Рейтинг':
+        context.push(AppRoutes.leaderboard);
+        break;
+      case 'Друзья':
+        context.push('/friends');
+        break;
+      case 'Команда':
+        context.push(AppRoutes.myTeam);
+        break;
+      case 'Мои игры':
+        context.push(AppRoutes.schedule);
+        break;
+      case 'Редактировать профиль':
+        context.push(AppRoutes.editProfile);
+        break;
+      case 'Настройки':
+        // Заглушка для пунктов меню которых еще нет
+        ErrorHandler.showInfo(context, '$title - скоро будет доступно');
+        break;
     }
   }
+
+
 }

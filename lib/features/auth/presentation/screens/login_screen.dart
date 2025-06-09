@@ -5,6 +5,7 @@ import '../../data/datasources/auth_service.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../core/errors/error_handler.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -33,13 +34,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (email != null && email.isNotEmpty) {
         _emailController.text = email;
         // Показываем сообщение о том, что email заполнен автоматически
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Email заполнен автоматически. Введите пароль для входа'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        ErrorHandler.showInfo(context, 'Email заполнен автоматически. Введите пароль для входа');
       }
     });
   }
@@ -76,10 +71,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // Успешный вход, перенаправление на главный экран
       context.go(AppRoutes.home);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Ошибка входа: ${e.toString()}';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ErrorHandler.showError(context, e);
+      }
     }
   }
 
@@ -91,9 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final email = _emailController.text.trim();
     
     if (email.isEmpty) {
-      setState(() {
-        _errorMessage = 'Введите email для сброса пароля';
-      });
+      ErrorHandler.showError(context, 'Введите email для сброса пароля');
       return;
     }
     
@@ -107,29 +102,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       
       if (!mounted) return;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Инструкции по сбросу пароля отправлены на ваш email'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      ErrorHandler.showSuccess(context, 'Инструкции по сбросу пароля отправлены на ваш email');
       
       setState(() {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Ошибка сброса пароля: ${e.toString()}';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ErrorHandler.showError(context, e);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/schedule/schedule_bg.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: AppSizes.screenPadding,
@@ -287,6 +285,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 } 

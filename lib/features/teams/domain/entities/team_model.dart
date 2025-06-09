@@ -11,6 +11,7 @@ class TeamModel {
   
   // Новые поля для постоянных команд
   final String? ownerId; // ID владельца команды (организатора)
+  final String? captainId; // ID капитана команды (для командных игр)
   final String? photoUrl; // Аватар команды
   final bool isGameTeam; // true - команда для конкретной игры, false - постоянная команда пользователя
 
@@ -23,6 +24,7 @@ class TeamModel {
     required this.createdAt,
     this.updatedAt,
     this.ownerId,
+    this.captainId,
     this.photoUrl,
     this.isGameTeam = true, // По умолчанию команда для игры
   });
@@ -33,6 +35,7 @@ class TeamModel {
     int? maxMembers,
     DateTime? updatedAt,
     String? ownerId,
+    String? captainId,
     String? photoUrl,
     bool? isGameTeam,
   }) {
@@ -45,6 +48,7 @@ class TeamModel {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       ownerId: ownerId ?? this.ownerId,
+      captainId: captainId ?? this.captainId,
       photoUrl: photoUrl ?? this.photoUrl,
       isGameTeam: isGameTeam ?? this.isGameTeam,
     );
@@ -60,6 +64,7 @@ class TeamModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
       'ownerId': ownerId,
+      'captainId': captainId,
       'photoUrl': photoUrl,
       'isGameTeam': isGameTeam,
     };
@@ -79,6 +84,7 @@ class TeamModel {
           ? (map['updatedAt'] as Timestamp).toDate() 
           : null,
       ownerId: map['ownerId'],
+      captainId: map['captainId'],
       photoUrl: map['photoUrl'],
       isGameTeam: map['isGameTeam'] ?? true,
     );

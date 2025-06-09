@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../../core/constants/constants.dart';
 import '../../domain/entities/friend_request_model.dart';
 import '../../../../core/providers.dart';
 import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
+import '../../../../core/errors/error_handler.dart';
 
 class FriendRequestsScreen extends ConsumerStatefulWidget {
   const FriendRequestsScreen({super.key});
@@ -74,21 +75,11 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen>
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${request.fromUserName} добавлен в друзья'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.showSuccess(context, '${request.fromUserName} добавлен в друзья');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -103,21 +94,11 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen>
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Запрос от ${request.fromUserName} отклонен'),
-            backgroundColor: AppColors.warning,
-          ),
-        );
+        ErrorHandler.showWarning(context, 'Запрос от ${request.fromUserName} отклонен');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -132,21 +113,11 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen>
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Запрос к ${request.toUserName} отменен'),
-            backgroundColor: AppColors.warning,
-          ),
-        );
+        ErrorHandler.showWarning(context, 'Запрос к ${request.toUserName} отменен');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -286,7 +257,7 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen>
                 children: [
                   CircleAvatar(
                     radius: 25,
-                    backgroundColor: AppColors.primary.withOpacity(0.1),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                     backgroundImage: request.fromUserPhotoUrl != null
                         ? NetworkImage(request.fromUserPhotoUrl!)
                         : null,
@@ -395,7 +366,7 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen>
             children: [
               CircleAvatar(
                 radius: 25,
-                backgroundColor: AppColors.primary.withOpacity(0.1),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                 backgroundImage: request.toUserPhotoUrl != null
                     ? NetworkImage(request.toUserPhotoUrl!)
                     : null,
@@ -496,67 +467,10 @@ class _FriendRequestsScreenState extends ConsumerState<FriendRequestsScreen>
     if (urlMatch != null) {
       final url = urlMatch.group(0)!;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Требуется создание индекса Firebase',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              const Text('Нажмите кнопку для создания индекса'),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          duration: const Duration(seconds: 8),
-          action: SnackBarAction(
-            label: 'Создать индекс',
-            textColor: Colors.white,
-            onPressed: () async {
-              try {
-                final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Откройте браузер и нажмите "Create Index". После создания обновите приложение.'),
-                      backgroundColor: AppColors.success,
-                      duration: Duration(seconds: 5),
-                    ),
-                  );
-                } else {
-                  throw Exception('Не удается открыть ссылку');
-                }
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Ошибка: ${e.toString()}'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
-            },
-          ),
-        ),
-      );
+      ErrorHandler.showError(context, 'Требуется создание индекса Firebase. Обратитесь к администратору.');
     } else {
       // Обычная ошибка без ссылки
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ошибка загрузки: $error'),
-          backgroundColor: AppColors.error,
-          action: SnackBarAction(
-            label: 'Повторить',
-            textColor: Colors.white,
-            onPressed: _loadFriendRequests,
-          ),
-        ),
-      );
+      ErrorHandler.showError(context, 'Ошибка загрузки: $error');
     }
   }
 } 

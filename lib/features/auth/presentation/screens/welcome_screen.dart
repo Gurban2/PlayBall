@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../../core/providers.dart';
 import '../../domain/entities/user_model.dart';
 
@@ -13,7 +14,6 @@ class WelcomeScreen extends ConsumerWidget {
     final userAsync = ref.watch(currentUserProvider);
     
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
           AppStrings.appName,
@@ -107,8 +107,15 @@ class WelcomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/schedule/schedule_bg.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
           children: [
             // Hero Section
             Container(
@@ -125,8 +132,8 @@ class WelcomeScreen extends ConsumerWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      AppColors.primary.withOpacity(0.8),
-                      AppColors.secondary.withOpacity(0.8),
+                      AppColors.primary.withValues(alpha: 0.8),
+                      AppColors.secondary.withValues(alpha: 0.8),
                     ],
                   ),
                 ),
@@ -354,6 +361,7 @@ class WelcomeScreen extends ConsumerWidget {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -381,7 +389,7 @@ class WelcomeScreen extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -445,7 +453,7 @@ class WelcomeScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
+              color: AppColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
@@ -487,16 +495,11 @@ class WelcomeScreen extends ConsumerWidget {
       final authService = ref.read(authServiceProvider);
       await authService.signOut();
       if (context.mounted) {
-        context.go('/'); // Возвращаемся на welcome page
+        context.go(AppRoutes.welcome); // Возвращаемся на welcome page
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка выхода: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, 'Ошибка выхода: ${e.toString()}');
       }
     }
   }

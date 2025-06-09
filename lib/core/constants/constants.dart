@@ -9,7 +9,7 @@ class AppColors {
   static const Color card = Colors.white;
   static const Color error = Color(0xFFE53935);
   static const Color success = Color(0xFF43A047);
-  static const Color text = Color(0xFF212121);
+  static const Color text = Color(0xFF000000);
   static const Color textSecondary = Color(0xFF757575);
   static const Color divider = Color(0xFFBDBDBD);
   static const Color warning = Color(0xFFFFB300);
@@ -27,11 +27,13 @@ class AppColors {
 
 // Стили шрифтов для важных названий
 class AppTextStyles {
-  // Заголовки - важные названия
+  // Константы для шрифтов
+  static const String notoSansSymbolsFont = 'NotoSansSymbols';
+
+  // Заголовки - важные названия (используем системный Roboto)
   static const TextStyle heading1 = TextStyle(
     fontSize: 22,
     fontWeight: FontWeight.bold,
-    fontFamily: 'Arial',
     color: AppColors.text,
     letterSpacing: 0.5,
   );
@@ -39,7 +41,6 @@ class AppTextStyles {
   static const TextStyle heading2 = TextStyle(
     fontSize: 24,
     fontWeight: FontWeight.bold,
-    fontFamily: 'Arial',
     color: AppColors.text,
     letterSpacing: 0.3,
   );
@@ -47,7 +48,6 @@ class AppTextStyles {
   static const TextStyle heading3 = TextStyle(
     fontSize: 20,
     fontWeight: FontWeight.w600,
-    fontFamily: 'Arial',
     color: Color.fromARGB(255, 231, 231, 231),
     letterSpacing: 0.2,
   );
@@ -56,7 +56,6 @@ class AppTextStyles {
   static const TextStyle appBarTitle = TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
-    fontFamily: 'Arial',
     color: Colors.white,
     letterSpacing: 0.5,
   );
@@ -65,7 +64,6 @@ class AppTextStyles {
   static const TextStyle teamName = TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
-    fontFamily: 'Arial',
     color: AppColors.text,
     letterSpacing: 0.3,
   );
@@ -73,7 +71,6 @@ class AppTextStyles {
   static const TextStyle gameName = TextStyle(
     fontSize: 16,
     fontWeight: FontWeight.w600,
-    fontFamily: 'Arial',
     color: AppColors.text,
     letterSpacing: 0.2,
   );
@@ -89,6 +86,14 @@ class AppTextStyles {
     fontSize: 12,
     fontWeight: FontWeight.normal,
     color: AppColors.textSecondary,
+  );
+  
+  // Стиль с символьным шрифтом
+  static const TextStyle symbolText = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.normal,
+    fontFamily: notoSansSymbolsFont,
+    color: AppColors.text,
   );
 }
 
@@ -231,6 +236,7 @@ class AppRoutes {
   static const String home = '/home';
   static const String schedule = '/schedule';
   static const String profile = '/profile';
+  static const String editProfile = '/edit-profile';
   static const String room = '/room';
   static const String createRoom = '/create-room';
   static const String gameDetails = '/game-details';
@@ -241,12 +247,12 @@ class AppRoutes {
   static const String adminPanel = '/admin-panel';
   static const String organizerDashboard = '/organizer-dashboard';
   static const String stats = '/stats';
-  static const String organizerEvaluation = '/organizer-evaluation';
+
   
   // Новые маршруты для команд
   static const String myTeam = '/my-team';
   static const String createMyTeam = '/create-my-team';
-  static const String editMyTeam = '/edit-my-team';
+
 }
 
 // Константы для Firestore

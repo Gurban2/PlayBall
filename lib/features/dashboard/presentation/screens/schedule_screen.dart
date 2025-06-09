@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
+import '../../../../shared/widgets/universal_card.dart';
+import '../../../../shared/widgets/navigation/game_nav_bar.dart';
 import '../../../rooms/domain/entities/room_model.dart';
 
 class ScheduleScreen extends ConsumerStatefulWidget {
@@ -14,11 +17,12 @@ class ScheduleScreen extends ConsumerStatefulWidget {
 }
 
 class _ScheduleScreenState extends ConsumerState<ScheduleScreen> 
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+    with WidgetsBindingObserver {
+  GameNavTab _activeTab = GameNavTab.all;
   String _sortBy = 'Время начала';
   bool _sortAscending = true;
   bool _showSortOptions = false;
+  bool _showSearchField = false;
   
   // Добавляем контроллер для поиска
   final TextEditingController _searchController = TextEditingController();
@@ -27,7 +31,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    
+    // Подписываемся на изменения состояния приложения
+    WidgetsBinding.instance.addObserver(this);
     
     // Слушаем изменения в поисковике
     _searchController.addListener(() {
@@ -40,13 +46,44 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _autoCompleteExpiredGames();
     });
+    
+    // Обновляем данные при инициализации
+    // ignore: unused_result
+    ref.refresh(activeRoomsProvider);
+    // ignore: unused_result
+    ref.refresh(plannedRoomsProvider);
+    // ignore: unused_result
+    ref.refresh(userRoomsProvider);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    // Отписываемся от изменений состояния приложения
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Обновляем данные при возвращении в приложение
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 Приложение возобновлено - обновляем расписание');
+      _refreshAllData();
+    }
+  }
+
+  /// Обновляет все данные на экране
+  void _refreshAllData() {
+    // ignore: unused_result
+    ref.refresh(activeRoomsProvider);
+    // ignore: unused_result
+    ref.refresh(plannedRoomsProvider);
+    // ignore: unused_result
+    ref.refresh(userRoomsProvider);
+    _autoCompleteExpiredGames();
   }
 
   Future<void> _autoCompleteExpiredGames() async {
@@ -95,7 +132,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                     error,
                     style: const TextStyle(
                       fontSize: 12,
-                      fontFamily: 'monospace',
+                      fontFamily: 'NotoSansSymbols',
                     ),
                   ),
                 ),
@@ -115,12 +152,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                     }
                   } catch (e) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Не удалось открыть ссылку: $e'),
-                          backgroundColor: AppColors.error,
-                        ),
-                      );
+                      ErrorHandler.showError(context, 'Не удалось открыть ссылку: $e');
                     }
                   }
                   if (mounted) Navigator.of(context).pop();
@@ -140,9 +172,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     
     // Для обычных ошибок показываем стандартное сообщение
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки: $error')),
-      );
+      ErrorHandler.showError(context, 'Ошибка загрузки: $error');
     }
   }
 
@@ -257,99 +287,351 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
   Widget build(BuildContext context) {
     final activeRoomsAsync = ref.watch(activeRoomsProvider);
     final plannedRoomsAsync = ref.watch(plannedRoomsProvider);
+    final completedRoomsAsync = ref.watch(userRoomsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.darkGrey,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(_showSortOptions ? 60 : 0), // Уменьшаем высоту еще больше
-          child: Column(
-            children: [
-              // Панель сортировки
-              if (_showSortOptions) _buildSortOptionsSection(),
-              
-              // Табы
-              TabBar(
-                controller: _tabController,
-                indicatorColor: Colors.deepOrange,
-                labelColor: const Color.fromARGB(255, 255, 238, 232),
-                unselectedLabelColor: Colors.orange.withOpacity(0.7),
-                labelPadding: EdgeInsets.zero,
-                indicatorPadding: EdgeInsets.zero,
-                padding: EdgeInsets.zero,
-                indicatorWeight: 2,
-                dividerHeight: 0,
-                tabs: [
-                  Tab(
-                    icon: AnimatedBuilder(
-                      animation: _tabController,
-                      builder: (context, child) {
-                        final isActive = _tabController.index == 0;
-                        return Icon(
-                          Icons.schedule, 
-                          size: isActive ? 26 : 24,
-                        );
-                      },
-                    ),
-                  ),
-                  Tab(
-                    icon: AnimatedBuilder(
-                      animation: _tabController,
-                      builder: (context, child) {
-                        final isActive = _tabController.index == 1;
-                        return Icon(
-                          Icons.play_circle_outline, 
-                          size: isActive ? 26 : 24,
-                        );
-                      },
-                    ),
-                  ),
-                  Tab(
-                    icon: AnimatedBuilder(
-                      animation: _tabController,
-                      builder: (context, child) {
-                        final isActive = _tabController.index == 2;
-                        return Icon(
-                          Icons.person, 
-                          size: isActive ? 26 : 24,
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.darkGrey.withValues(alpha: 0.5),
       body: Container(
         decoration: const BoxDecoration(
           image: DecorationImage(
-            image: AssetImage('assets/images/schedule_bg.jfif'),
+            image: AssetImage('assets/images/schedule/schedule_bg.png'),
             fit: BoxFit.cover,
           ),
         ),
-        child: GestureDetector(
-          onTap: () {
-            if (_showSortOptions) {
-              setState(() {
-                _showSortOptions = false;
-              });
-            }
-          },
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildGamesList(plannedRoomsAsync, 'Нет запланированных игр'),
-              
-              _buildGamesList(activeRoomsAsync, 'Нет активных игр'),
-              
-              _buildMyGames(),
-            ],
+            child: Column(
+              children: [
+            // Новый Game Navigation Bar
+            GameNavBar(
+              activeTab: _activeTab,
+              onTabChanged: (tab) {
+                setState(() {
+                  _activeTab = tab;
+                });
+              },
+              onNotificationsPressed: () {
+                context.push('/notifications');
+              },
+              onSearchPressed: () {
+                setState(() {
+                  _showSearchField = !_showSearchField;
+                  if (!_showSearchField) {
+                    _searchController.clear();
+                  }
+                });
+              },
+              onSortPressed: () {
+                setState(() {
+                  _showSortOptions = !_showSortOptions;
+                });
+              },
+              showSortOptions: _showSortOptions,
+            ),
+            
+            // Полоса разделитель
+                Container(
+              height: 1,
+              color: Colors.white.withValues(alpha: 0.4),
+            ),
+            
+            // Поисковое поле (если активно)
+            if (_showSearchField) _buildSearchSection(),
+            
+            // Панель сортировки (если активна)  
+            if (_showSortOptions) _buildSortOptionsSection(),
+            
+            // Содержимое
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  if (_showSortOptions) {
+                    setState(() {
+                      _showSortOptions = false;
+                    });
+                  }
+                },
+                child: _buildCurrentTabContent(activeRoomsAsync, plannedRoomsAsync, completedRoomsAsync),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCurrentTabContent(
+    AsyncValue<List<RoomModel>> activeRoomsAsync,
+    AsyncValue<List<RoomModel>> plannedRoomsAsync,
+    AsyncValue<List<RoomModel>> completedRoomsAsync,
+  ) {
+    switch (_activeTab) {
+      case GameNavTab.all:
+        return _buildAllGamesContent(activeRoomsAsync, plannedRoomsAsync);
+      case GameNavTab.live:
+        return _buildGamesList(activeRoomsAsync, 'Нет активных игр');
+      case GameNavTab.upcoming:
+        return _buildGamesList(plannedRoomsAsync, 'Нет запланированных игр');
+      case GameNavTab.finished:
+        return _buildFinishedGamesContent(completedRoomsAsync);
+    }
+  }
+
+  Widget _buildAllGamesContent(
+    AsyncValue<List<RoomModel>> activeRoomsAsync,
+    AsyncValue<List<RoomModel>> plannedRoomsAsync,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Заголовок "Обычные игры"
+          const Text(
+            'Обычные игры',
+                                style: TextStyle(
+              fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+          const SizedBox(height: 8),
+          
+          // Список обычных игр
+          _buildNormalGamesList(activeRoomsAsync, plannedRoomsAsync),
+          
+          const SizedBox(height: 24),
+          
+          // Заголовок "Командные игры"
+          const Text(
+            'Командные игры',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
+          const SizedBox(height: 8),
+          
+          // Список командных игр
+          _buildTeamGamesList(activeRoomsAsync, plannedRoomsAsync),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNormalGamesList(
+    AsyncValue<List<RoomModel>> activeRoomsAsync,
+    AsyncValue<List<RoomModel>> plannedRoomsAsync,
+  ) {
+    return activeRoomsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Text('Ошибка: $error', style: const TextStyle(color: Colors.white)),
+      ),
+      data: (activeRooms) {
+        return plannedRoomsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(
+            child: Text('Ошибка: $error', style: const TextStyle(color: Colors.white)),
+          ),
+          data: (plannedRooms) {
+            final allRooms = [...activeRooms, ...plannedRooms];
+            final normalGames = allRooms
+                .where((room) => room.isNormalMode)
+                .toList();
+            
+            return FutureBuilder<List<RoomModel>>(
+              future: _filterAndSortRooms(normalGames),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Ошибка: ${snapshot.error}', 
+                        style: const TextStyle(color: Colors.white)),
+                  );
+                }
+                
+                final filteredAndSortedRooms = snapshot.data ?? [];
+                
+                if (filteredAndSortedRooms.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'Нет обычных игр',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  );
+                }
+                
+                return Column(
+                  children: filteredAndSortedRooms
+                      .map((room) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: UniversalCard(
+                              title: room.title,
+                              subtitle: '${room.location} • ${room.participants.length}/${room.maxParticipants}',
+                              onTap: () => _navigateToRoomDetails(room.id),
+                              accentColor: _getGameStatusColor(room),
+                            ),
+                          ))
+                      .toList(),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTeamGamesList(
+    AsyncValue<List<RoomModel>> activeRoomsAsync,
+    AsyncValue<List<RoomModel>> plannedRoomsAsync,
+  ) {
+    return activeRoomsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Text('Ошибка: $error', style: const TextStyle(color: Colors.white)),
+      ),
+      data: (activeRooms) {
+        return plannedRoomsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(
+            child: Text('Ошибка: $error', style: const TextStyle(color: Colors.white)),
+          ),
+          data: (plannedRooms) {
+            final allRooms = [...activeRooms, ...plannedRooms];
+            final teamGames = allRooms
+                .where((room) => room.isTeamMode)
+                .toList();
+            
+            return FutureBuilder<List<RoomModel>>(
+              future: _filterAndSortRooms(teamGames),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Ошибка: ${snapshot.error}', 
+                        style: const TextStyle(color: Colors.white)),
+                  );
+                }
+                
+                final filteredAndSortedRooms = snapshot.data ?? [];
+                
+                if (filteredAndSortedRooms.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'Нет командных игр',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  );
+                }
+                
+                return Column(
+                  children: filteredAndSortedRooms
+                      .map((room) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: UniversalCard(
+                              title: room.title,
+                              subtitle: '${room.location} • ${room.participants.length}/${room.maxParticipants}',
+                              onTap: () => _navigateToRoomDetails(room.id),
+                              accentColor: _getGameStatusColor(room),
+                            ),
+                          ))
+                      .toList(),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFinishedGamesContent(AsyncValue<List<RoomModel>> completedRoomsAsync) {
+    return completedRoomsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Text('Ошибка: $error', style: const TextStyle(color: Colors.white)),
+      ),
+      data: (completedRooms) {
+        final finishedGames = completedRooms
+            .where((room) => room.status == RoomStatus.completed)
+            .toList();
+        
+        if (finishedGames.isEmpty) {
+          return const Center(
+            child: Text(
+              'Нет завершенных игр',
+              style: TextStyle(color: Colors.white70),
+            ),
+          );
+        }
+        
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: finishedGames.length,
+          itemBuilder: (context, index) {
+            final room = finishedGames[index];
+            return UniversalCard(
+              title: room.title,
+              subtitle: '${room.location} • Завершена',
+              onTap: () => _navigateToRoomDetails(room.id),
+              accentColor: AppColors.textSecondary,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Color _getGameStatusColor(RoomModel room) {
+    switch (room.status) {
+      case RoomStatus.active:
+        return AppColors.error; // Красный для активных
+      case RoomStatus.planned:
+        return AppColors.primary; // Синий для запланированных
+      case RoomStatus.completed:
+        return AppColors.textSecondary; // Серый для завершенных
+      case RoomStatus.cancelled:
+        return AppColors.warning; // Желтый для отмененных
+    }
+  }
+
+  Widget _buildSearchSection() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      color: AppColors.darkGrey.withValues(alpha: 0.9),
+      child: TextField(
+        controller: _searchController,
+        autofocus: true,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Поиск игр...',
+          hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
+          prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 18),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                  onPressed: () {
+                    _searchController.clear();
+                  },
+                  iconSize: 18,
+                  padding: const EdgeInsets.all(8),
+                )
+              : null,
+          filled: true,
+          fillColor: Colors.black.withValues(alpha: 0.3),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          isDense: true,
         ),
       ),
     );
@@ -357,141 +639,120 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
 
   Widget _buildSortOptionsSection() {
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
+          bottomLeft: Radius.circular(8),
+          bottomRight: Radius.circular(8),
         ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(Icons.sort, color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                'Сортировка',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.text,
+          const Icon(Icons.sort, color: AppColors.primary, size: 16),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade300, width: 0.5),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _sortBy,
+                  isExpanded: true,
+                  icon: const Icon(Icons.expand_more, size: 14),
+                  style: const TextStyle(fontSize: 12, color: Colors.black),
+                  items: ['Время начала', 'Название', 'Локация', 'Участники', 'Цена', 'Тип игры']
+                      .map((sortOption) => DropdownMenuItem(
+                            value: sortOption,
+                            child: Text(sortOption),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _sortBy = value!;
+                    });
+                  },
                 ),
               ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {
+            ),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            height: 28,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade300, width: 0.5),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<bool>(
+                value: _sortAscending,
+                icon: const Icon(Icons.expand_more, size: 14),
+                style: const TextStyle(fontSize: 12, color: Colors.black),
+                items: [
+                  const DropdownMenuItem<bool>(
+                    value: true,
+                    child: Text('↑'),
+                  ),
+                  const DropdownMenuItem<bool>(
+                    value: false,
+                    child: Text('↓'),
+                  ),
+                ],
+                onChanged: (value) {
                   setState(() {
-                    _showSortOptions = false;
+                    _sortAscending = value!;
                   });
                 },
-                icon: const Icon(Icons.close, size: 20),
-                color: AppColors.textSecondary,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
-            ],
+            ),
           ),
-          
-          const SizedBox(height: 12),
-          
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(50),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _sortBy,
-                      isExpanded: true,
-                      icon: const Icon(Icons.expand_more, size: 20),
-                      items: ['Время начала', 'Название', 'Локация', 'Участники', 'Цена', 'Тип игры']
-                          .map((sortOption) => DropdownMenuItem(
-                                value: sortOption,
-                                child: Text(
-                                  sortOption,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _sortBy = value!;
-                        });
-                      },
-                    ),
-                  ),
-                ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _sortBy = 'Время начала';
+                _sortAscending = true;
+              });
+            },
+            child: Container(
+              height: 28,
+              width: 28,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
               ),
-              
-              const SizedBox(width: 12),
-              
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(50),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<bool>(
-                      value: _sortAscending,
-                      isExpanded: true,
-                      icon: const Icon(Icons.expand_more, size: 20),
-                      items: [
-                        const DropdownMenuItem<bool>(
-                          value: true,
-                          child: Text('↑ По возрастанию', style: TextStyle(fontSize: 14)),
-                        ),
-                        const DropdownMenuItem<bool>(
-                          value: false,
-                          child: Text('↓ По убыванию', style: TextStyle(fontSize: 14)),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _sortAscending = value!;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              child: const Icon(Icons.refresh, size: 14, color: AppColors.primary),
+            ),
           ),
-          
-          const SizedBox(height: 12),
-          
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _sortBy = 'Время начала';
-                  _sortAscending = true;
-                });
-              },
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Сбросить сортировку'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: BorderSide(color: AppColors.primary),
-                padding: const EdgeInsets.symmetric(vertical: 8),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _showSortOptions = false;
+              });
+            },
+            child: Container(
+              height: 28,
+              width: 28,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
               ),
+              child: const Icon(Icons.close, size: 14, color: Colors.grey),
             ),
           ),
         ],
@@ -500,57 +761,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
   }
 
   Widget _buildGamesList(AsyncValue<List<RoomModel>> roomsAsync, String emptyMessage) {
-    return Column(
-      children: [
-        // Поле поиска
-        
-        Container(
-          margin: const EdgeInsets.all(8),
-          child: TextField(
-            controller: _searchController,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Поиск игр...',
-              hintStyle: const TextStyle(color: Colors.white54),
-              prefixIcon: const Icon(Icons.search, color: Colors.white54),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.white54),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
-                    )
-                  : IconButton(
-                      icon: Icon(
-                        _showSortOptions ? Icons.filter_list : Icons.filter_list_off,
-                        color: Colors.white54,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _showSortOptions = !_showSortOptions;
-                        });
-                      },
-                    ),
-              filled: true,
-              fillColor: Colors.black.withOpacity(0.3),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(25),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-          ),
-        ),
-        // Основной контент
-        Expanded(
-          child: roomsAsync.when(
+    return roomsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, stack) => Center(
               child: Container(
                 margin: const EdgeInsets.all(24),
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.grey[800]?.withOpacity(0.85),
+                  color: Colors.grey[800]?.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -573,8 +791,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                     ElevatedButton(
                       onPressed: () {
                         if (roomsAsync == ref.read(activeRoomsProvider)) {
+                          // ignore: unused_result
                           ref.refresh(activeRoomsProvider);
                         } else {
+                          // ignore: unused_result
                           ref.refresh(plannedRoomsProvider);
                         }
                       },
@@ -602,7 +822,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                         margin: const EdgeInsets.all(24),
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.grey[800]?.withOpacity(0.85),
+                          color: Colors.grey[800]?.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Column(
@@ -630,7 +850,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                         margin: const EdgeInsets.all(24),
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.grey[800]?.withOpacity(0.85),
+                          color: Colors.grey[800]?.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Column(
@@ -665,8 +885,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                   return RefreshIndicator(
                     onRefresh: () async {
                       if (roomsAsync == ref.read(activeRoomsProvider)) {
+                        // ignore: unused_result
                         ref.refresh(activeRoomsProvider);
                       } else {
+                        // ignore: unused_result
                         ref.refresh(plannedRoomsProvider);
                       }
                     },
@@ -681,9 +903,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                 },
               );
             },
-          ),
-        ),
-      ],
     );
   }
 
@@ -698,7 +917,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
               margin: const EdgeInsets.all(24),
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.grey[800]?.withOpacity(0.85),
+                color: Colors.grey[800]?.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -719,7 +938,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => ref.refresh(userRoomsProvider),
+                    onPressed: () {
+                      // ignore: unused_result
+                      ref.refresh(userRoomsProvider);
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -737,7 +959,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
                   margin: const EdgeInsets.all(24),
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.grey[800]?.withOpacity(0.85),
+                    color: Colors.grey[800]?.withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const Column(
@@ -767,7 +989,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
             }
             
             return RefreshIndicator(
-              onRefresh: () async => ref.refresh(userRoomsProvider),
+              onRefresh: () async {
+                // ignore: unused_result
+                ref.refresh(userRoomsProvider);
+              },
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: userRooms.length,
@@ -783,99 +1008,36 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
   }
 
   Widget _buildEnhancedRoomCard(RoomModel room) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      elevation: 2,
-      color: Colors.grey[800]?.withOpacity(0.85),
-      child: InkWell(
-        onTap: () => _navigateToRoomDetails(room.id),
-        borderRadius: BorderRadius.circular(50),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      room.title,
-                      style: AppTextStyles.gameName.copyWith(color: Colors.white),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(room.status),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _getStatusText(room.status),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 8),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(Icons.location_on, size: 14, color: Colors.orange),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            room.location,
-                            style: const TextStyle(fontSize: 12, color: Colors.white70),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _buildParticipantsDisplay(room),
-                ],
-              ),
-              
-              const SizedBox(height: 6),
-              
-              Row(
-                children: [
-                  Icon(Icons.access_time, size: 14, color: Colors.orange),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatDateTime(room.startTime),
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
-                  ),
-                  const Spacer(),
-                  Text(
-                    _getGameModeDisplayName(room.gameMode),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+    final statusColor = _getStatusColor(room.status);
+    final isActive = room.status == RoomStatus.active;
+    final isToday = _isSameDay(room.startTime, DateTime.now());
+    final accentColor = isActive ? const Color(0xFFFF00C7) : statusColor;
+    
+    return UniversalCard(
+      title: room.title,
+      subtitle: room.location,
+      accentColor: accentColor,
+      onTap: () => _navigateToRoomDetails(room.id),
+      badge: isToday ? 'Today' : null,
+      badgeColor: AppColors.warning,
+      trailing: Text(
+        _formatTime(room.startTime),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: accentColor,
+          height: 0.8,
         ),
       ),
     );
   }
+
+  // Новый метод для форматирования времени
+  String _formatTime(DateTime dateTime) {
+    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+
 
   Color _getStatusColor(RoomStatus status) {
     switch (status) {
@@ -890,85 +1052,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     }
   }
 
-  String _getStatusText(RoomStatus status) {
-    switch (status) {
-      case RoomStatus.planned:
-        return 'Запланирована';
-      case RoomStatus.active:
-        return 'Активна';
-      case RoomStatus.completed:
-        return 'Завершена';
-      case RoomStatus.cancelled:
-        return 'Отменена';
-    }
-  }
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}.${dateTime.month} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-  }
 
-  String _getGameModeDisplayName(GameMode mode) {
-    switch (mode) {
-      case GameMode.normal:
-        return 'Обычный';
-      case GameMode.team_friendly:
-        return 'Команды';
-      case GameMode.tournament:
-        return 'Турнир';
-    }
-  }
 
-  // Функция для получения количества команд в командном режиме
-  Future<int> _getTeamsCount(String roomId) async {
-    try {
-      final teamService = ref.read(teamServiceProvider);
-      final teams = await teamService.getTeamsForRoom(roomId);
-      return teams.length;
-    } catch (e) {
-      return 0;
-    }
-  }
 
-  // Функция для отображения участников или команд в зависимости от режима
-  Widget _buildParticipantsDisplay(RoomModel room) {
-    if (room.isTeamMode) {
-      // Для командного режима показываем команды
-      return FutureBuilder<int>(
-        future: _getTeamsCount(room.id),
-        builder: (context, snapshot) {
-          final teamsCount = snapshot.data ?? 0;
-          return Row(
-            children: [
-              Icon(
-                Icons.groups,
-                size: AppSizes.smallIconSize,
-                color: Colors.orange,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '$teamsCount/${room.numberOfTeams} команд',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ],
-          );
-        },
-      );
-    } else {
-      // Для обычного режима показываем игроков
-      return Row(
-        children: [
-          Icon(
-            Icons.people,
-            size: AppSizes.smallIconSize,
-            color: Colors.orange,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '${room.participants.length}/${room.maxParticipants}',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-        ],
-      );
-    }
+  // Функция для проверки, является ли дата сегодняшней
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+           date1.month == date2.month &&
+           date1.day == date2.day;
   }
 } 

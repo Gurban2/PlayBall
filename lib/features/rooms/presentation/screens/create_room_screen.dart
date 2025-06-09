@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:typed_data';
+
 import '../../../../core/constants/constants.dart';
 import '../../../../core/providers.dart';
-import '../../../../features/auth/domain/entities/user_model.dart';
-import '../../../../features/rooms/domain/entities/room_model.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../../../core/errors/error_handler.dart';
+import '../../../../core/services/s3_upload_service.dart';
+import '../../domain/entities/room_model.dart';
+import '../../../auth/domain/entities/user_model.dart';
+import '../../../../shared/widgets/dialogs/unified_dialogs.dart';
 
 class CreateRoomScreen extends ConsumerStatefulWidget {
   const CreateRoomScreen({super.key});
@@ -29,9 +31,9 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   DateTime _endTime = DateTime.now().add(const Duration(hours: 3));
   GameMode _selectedGameMode = GameMode.normal;
   bool _isLoading = false;
-  Uint8List? _selectedImageBytes;
-  final ImagePicker _imagePicker = ImagePicker();
-  int _activeRoomsCount = 0;
+
+
+
   String? _selectedLocation;
   String? _userTeamName; // Название команды пользователя
   String? _userTeamId; // ID команды пользователя
@@ -92,13 +94,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     final user = userAsync.value;
     
     if (user != null) {
-      final teamService = ref.read(teamServiceProvider);
-      final count = await ref.read(roomServiceProvider).getOrganizerActiveRoomsCount(user.id);
-      if (mounted) {
-        setState(() {
-          _activeRoomsCount = count;
-        });
-      }
+      // Active rooms count logic removed
     }
   }
 
@@ -106,27 +102,27 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     final userAsync = ref.read(currentUserProvider);
     final user = userAsync.value;
     
-    print('🔍 _loadUserTeamInfo: Начинаем загрузку данных команды');
-    print('👤 Пользователь: ${user?.name} (ID: ${user?.id})');
+    debugPrint('🔍 _loadUserTeamInfo: Начинаем загрузку данных команды');
+    debugPrint('👤 Пользователь: ${user?.name} (ID: ${user?.id})');
     
     if (user != null) {
       final teamService = ref.read(teamServiceProvider);
       try {
         final teamInfo = await teamService.getUserTeamInfo(user.id);
-        print('📊 Данные команды получены: $teamInfo');
+        debugPrint('📊 Данные команды получены: $teamInfo');
         
         if (mounted) {
           setState(() {
             _userTeamName = teamInfo['name'];
             _userTeamId = teamInfo['id'];
           });
-          print('✅ Состояние обновлено: teamName = $_userTeamName, teamId = $_userTeamId');
+          debugPrint('✅ Состояние обновлено: teamName = $_userTeamName, teamId = $_userTeamId');
         }
       } catch (e) {
-        print('❌ Ошибка загрузки данных команды: $e');
+        debugPrint('❌ Ошибка загрузки данных команды: $e');
       }
     } else {
-      print('❌ Пользователь не найден');
+      debugPrint('❌ Пользователь не найден');
     }
   }
 
@@ -148,7 +144,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         _titleController.text = currentTitle.isEmpty ? '' : '$currentTitle - Команды';
         break;
       case GameMode.tournament:
-        _titleController.text = currentTitle.isEmpty ? '' : '$currentTitle - Турнир';
+        // Турнирный режим временно отключен
+        _titleController.text = currentTitle;
         break;
     }
   }
@@ -164,34 +161,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     super.dispose();
   }
 
-  Future<void> _selectImage() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 80,
-      );
 
-      if (image != null) {
-        final bytes = await image.readAsBytes();
-        if (mounted) {
-          setState(() {
-            _selectedImageBytes = bytes;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка выбора изображения: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
 
   Future<void> _selectDateTime(bool isStartTime) async {
     final DateTime initialDate = isStartTime ? _startTime : _endTime;
@@ -235,20 +205,13 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   Future<void> _createRoom() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите локацию')),
-      );
+      ErrorHandler.required(context, 'Локация');
       return;
     }
 
-    // Валидация времени
-    if (_endTime.isBefore(_startTime.add(const Duration(minutes: 30)))) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Время окончания должно быть минимум на 30 минут позже времени начала'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+    // Валидация времени - проверяем только что время окончания позже времени начала
+    if (_endTime.isBefore(_startTime) || _endTime.isAtSameMomentAs(_startTime)) {
+      ErrorHandler.validation(context, 'Время окончания должно быть позже времени начала');
       return;
     }
 
@@ -268,40 +231,22 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     if (user == null) return;
 
     if (user.role == UserRole.user) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Только организаторы могут создавать комнаты'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      ErrorHandler.permissionDenied(context);
       return;
     }
 
     // Проверяем наличие и размер команды у организатора для командного режима
     if (_selectedGameMode == GameMode.team_friendly) {
-      final teamService = ref.read(teamServiceProvider);
-      final userTeam = await teamService.getUserTeam(user.id);
+      final userTeam = await ref.read(teamServiceProvider).getUserTeam(user.id);
       
       if (!mounted) return;
       if (userTeam == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Для создания командной игры у вас должна быть своя команда. Создайте команду в разделе "Моя команда" в профиле.'),
-            backgroundColor: AppColors.error,
-            duration: Duration(seconds: 5),
-          ),
-        );
+        ErrorHandler.showError(context, 'Для создания командной игры у вас должна быть своя команда. Создайте команду в разделе "Моя команда" в профиле.');
         return;
       }
       
       if (userTeam.members.length < 6) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Для командной игры команда должна состоять из 6 игроков. В вашей команде: ${userTeam.members.length}/6'),
-            backgroundColor: AppColors.error,
-            duration: Duration(seconds: 5),
-          ),
-        );
+        ErrorHandler.showError(context, 'Для командной игры команда должна состоять из 6 игроков. В вашей команде: ${userTeam.members.length}/6');
         return;
       }
     }
@@ -346,39 +291,13 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                   ],
       );
       
-      // Если есть изображение, загружаем его в Storage и обновляем комнату
-      // ВРЕМЕННО ОТКЛЮЧЕНО - TODO: Включить после настройки Firebase Storage
-      /*
-      if (_selectedImageBytes != null) {
-        try {
-          final storageService = ref.read(storageServiceProvider);
-          final photoUrl = await storageService.uploadRoomImage(_selectedImageBytes!, roomId);
-          
-          // Обновляем комнату с URL фотографии
-          await teamService.updateRoom(roomId: roomId, photoUrl: photoUrl);
-        } catch (e) {
-          // Если загрузка фото не удалась, показываем предупреждение, но комната уже создана
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Комната создана, но фото не загружено: ${e.toString()}'),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 4),
-              ),
-            );
-          }
-        }
-      }
-      */
+      // Загрузка изображений комнат готова к использованию через S3
+      // TODO: Добавить UI для выбора изображения и использовать:
+      // final photoUrl = await S3UploadService.uploadRoomImage(imageBytes, roomId);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Игра успешно создана!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
+              if (mounted) {
+          ErrorHandler.gameCreated(context);
+        }
       
       if (mounted) {
         context.go('${AppRoutes.room}/$roomId');
@@ -396,183 +315,57 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           _loadActiveRoomsCount();
           
           // Показываем обычный SnackBar для лимита игр
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: AppColors.error,
-              duration: const Duration(seconds: 5),
-            ),
-          );
+          ErrorHandler.showError(context, errorMessage);
         } else if (e.toString().contains('уже запланирована игра на это время')) {
           // Показываем popup для конфликтов локаций
           _showLocationConflictDialog(e.toString().replaceFirst('Exception: ', ''));
         } else {
           errorMessage = 'Ошибка создания игры: ${e.toString()}';
           
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: AppColors.error,
-              duration: const Duration(seconds: 5),
-            ),
-          );
+          ErrorHandler.showError(context, errorMessage);
         }
       }
     }
   }
 
   void _showLocationConflictDialog(String message) {
-    showDialog(
+    UnifiedDialogs.showWarning(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.warning_amber,
-                  color: AppColors.warning,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Конфликт локации',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.text,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                message,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textSecondary,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.primary.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.lightbulb_outline,
-                      color: AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Попробуйте выбрать другое время или локацию',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-              child: const Text(
-                'Понятно',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.warning,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'Изменить время',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      title: 'Конфликт локации',
+      message: message,
+      confirmText: 'Изменить время',
+      cancelText: 'Понятно',
+      additionalInfo: 'Попробуйте выбрать другое время или локацию',
     );
   }
 
   void _showConflictDialog() {
-    showDialog(
+    UnifiedDialogs.showInfo(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.warning, color: AppColors.warning),
-            const SizedBox(width: 8),
-            const Text('Конфликт времени'),
-          ],
-        ),
-        content: const Text(
-          'В выбранной локации уже запланирована игра на это время. Выберите другое время или локацию.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Понятно'),
-          ),
-        ],
-      ),
+      title: 'Конфликт времени',
+      message: 'В выбранной локации уже запланирована игра на это время. Выберите другое время или локацию.',
+      icon: Icons.warning,
+      iconColor: AppColors.warning,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     // Отладочная информация
-    print('🏗️ Build: _userTeamName = $_userTeamName, _userTeamId = $_userTeamId');
-    print('🎮 Build: _selectedGameMode = $_selectedGameMode');
+    debugPrint('🏗️ Build: _userTeamName = $_userTeamName, _userTeamId = $_userTeamId');
+    debugPrint('🎮 Build: _selectedGameMode = $_selectedGameMode');
     
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/schedule/schedule_bg.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
@@ -655,7 +448,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                     children: [
                                       _buildGameModeChip(GameMode.normal, 'Обычный'),
                                       _buildGameModeChip(GameMode.team_friendly, 'Команды'),
-                                      _buildGameModeChip(GameMode.tournament, 'Турнир'),
+                                      // Турнирный режим временно отключен
+                                      // _buildGameModeChip(GameMode.tournament, 'Турнир'),
                                     ],
                                   ),
                                 ],
@@ -897,10 +691,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
+                                color: AppColors.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: AppColors.primary.withOpacity(0.3),
+                                  color: AppColors.primary.withValues(alpha: 0.3),
                                 ),
                               ),
                               child: Row(
@@ -928,7 +722,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                                           'Игра автоматически начинается в указанное время начала и завершается в указанное время окончания.',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: AppColors.primary.withOpacity(0.8),
+                                            color: AppColors.primary.withValues(alpha: 0.8),
                                           ),
                                         ),
                                       ],
@@ -972,6 +766,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                 ),
               ),
             ),
+      ),
     );
   }
 

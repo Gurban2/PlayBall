@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/constants.dart'; 
 import '../../../features/auth/domain/entities/user_model.dart';
 import '../../../core/providers.dart';
+import '../../../core/errors/error_handler.dart';
 
 class PlayerProfileDialog {
   static Future<void> show(
@@ -21,12 +22,7 @@ class PlayerProfileDialog {
       
       if (player == null) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Игрок не найден'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, 'Игрок не найден');
         }
         return;
       }
@@ -52,12 +48,7 @@ class PlayerProfileDialog {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки профиля: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -102,12 +93,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${widget.player.name} удален из друзей'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ErrorHandler.showSuccess(context, '${widget.player.name} удален из друзей');
           }
           break;
 
@@ -119,12 +105,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Запрос дружбы отправлен ${widget.player.name}'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ErrorHandler.showSuccess(context, 'Запрос дружбы отправлен ${widget.player.name}');
           }
           break;
 
@@ -136,12 +117,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Запрос дружбы отменен'),
-                backgroundColor: AppColors.warning,
-              ),
-            );
+            ErrorHandler.showWarning(context, 'Запрос дружбы отменен');
           }
           break;
 
@@ -152,12 +128,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -200,12 +171,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${widget.player.name} добавлен в друзья'),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ErrorHandler.showSuccess(context, '${widget.player.name} добавлен в друзья');
           }
         } else {
           // Отклоняем запрос
@@ -215,22 +181,12 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
           });
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Запрос дружбы отклонен'),
-                backgroundColor: AppColors.warning,
-              ),
-            );
+            ErrorHandler.showWarning(context, 'Запрос дружбы отклонен');
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }
@@ -301,12 +257,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
 
   void _navigateToTeam() {
     if (widget.player.teamId == null || widget.player.teamName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Информация о команде недоступна'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      ErrorHandler.showError(context, 'Информация о команде недоступна');
       return;
     }
 
@@ -342,7 +293,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: Colors.white.withOpacity(0.2),
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
                     backgroundImage: widget.player.photoUrl != null
                         ? NetworkImage(widget.player.photoUrl!)
                         : null,
@@ -383,7 +334,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
                               widget.player.statusDisplayName,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                               ),
                             ),
                           ],
@@ -414,7 +365,7 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
                         child: _buildStatItem('Винрейт', '${widget.player.winRate.toStringAsFixed(0)}%'),
                       ),
                       Expanded(
-                        child: _buildStatItem('Рейтинг', widget.player.rating.toStringAsFixed(1)),
+                        child: _buildStatItem('Очки', widget.player.totalScore.toString()),
                       ),
                     ],
                   ),
@@ -428,10 +379,10 @@ class _PlayerProfileDialogWidgetState extends ConsumerState<_PlayerProfileDialog
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.secondary.withOpacity(0.1),
+                          color: AppColors.secondary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: AppColors.secondary.withOpacity(0.3),
+                            color: AppColors.secondary.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(

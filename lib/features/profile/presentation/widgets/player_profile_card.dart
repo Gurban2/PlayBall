@@ -48,7 +48,7 @@ class PlayerProfileCard extends StatelessWidget {
   Widget _buildAvatar() {
     return CircleAvatar(
       radius: 50,
-      backgroundColor: AppColors.primary.withOpacity(0.1),
+      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
       backgroundImage: player.photoUrl != null
           ? NetworkImage(player.photoUrl!)
           : null,
@@ -88,7 +88,7 @@ class PlayerProfileCard extends StatelessWidget {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
+                  color: AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
@@ -235,10 +235,10 @@ class _TeamInfoWidget extends StatelessWidget {
           vertical: 6,
         ),
         decoration: BoxDecoration(
-          color: AppColors.secondary.withOpacity(0.1),
+          color: AppColors.secondary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: AppColors.secondary.withOpacity(0.3),
+            color: AppColors.secondary.withValues(alpha: 0.3),
           ),
         ),
         child: Row(

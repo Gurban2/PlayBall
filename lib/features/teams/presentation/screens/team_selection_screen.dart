@@ -6,7 +6,10 @@ import '../../../rooms/domain/entities/room_model.dart';
 import '../../../teams/domain/entities/team_model.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../../core/utils/game_time_utils.dart';
+import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
+import '../../../../shared/widgets/cards/team_member_card.dart';
 
 class TeamSelectionScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -30,23 +33,13 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
       await teamService.joinTeam(teamId, user.id);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Вы успешно присоединились к команде!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.teamJoined(context, 'команде');
         // Возвращаемся к экрану комнаты
         context.pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка присоединения: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, 'Ошибка присоединения: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -75,129 +68,142 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
   }
 
   void _showPlayerProfile(UserModel player) {
-    showDialog(
+    PlayerProfileDialog.show(
+      context,
+      ref,
+      player.id,
+      playerName: player.name,
+    );
+  }
+
+  Future<void> _handleFriendAction(UserModel player, String friendshipStatus) async {
+    try {
+      final currentUser = ref.read(currentUserProvider).value;
+      if (currentUser == null) return;
+
+      final userService = ref.read(userServiceProvider);
+
+      switch (friendshipStatus) {
+        case 'friends':
+          await userService.removeFriend(currentUser.id, player.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${player.name} удален из друзей'),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+          break;
+
+        case 'none':
+          await userService.sendFriendRequest(currentUser.id, player.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Запрос дружбы отправлен ${player.name}'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+          break;
+
+        case 'request_sent':
+          await userService.cancelFriendRequest(currentUser.id, player.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Запрос дружбы ${player.name} отменен'),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+          break;
+
+        case 'request_received':
+          _showFriendRequestDialog(player);
+          break;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showFriendRequestDialog(UserModel player) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(player.name),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: CircleAvatar(
-                radius: 40,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                backgroundImage: player.photoUrl != null 
-                    ? NetworkImage(player.photoUrl!) 
-                    : null,
-                child: player.photoUrl == null 
-                    ? Text(
-                        _getInitials(player.name),
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24,
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildProfileRow('Рейтинг', player.rating.toStringAsFixed(1)),
-            _buildProfileRow('Игр сыграно', player.gamesPlayed.toString()),
-            _buildProfileRow('Процент побед', '${player.winRate.toStringAsFixed(1)}%'),
-            
-            // Информация о команде
-            if (player.teamName != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.secondary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.secondary.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.groups,
-                      color: AppColors.secondary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                player.teamName!,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.secondary,
-                                ),
-                              ),
-                              if (player.isTeamCaptain) ...[
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.warning,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'Капитан',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const Text(
-                            'Постоянная команда',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            
-            if (player.bio.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'О себе:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(player.bio),
-            ],
-          ],
-        ),
+        title: Text('Запрос дружбы от ${player.name}'),
+        content: Text('${player.name} хочет добавить вас в друзья'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Закрыть'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отклонить'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Принять'),
           ),
         ],
       ),
     );
+
+    if (result != null) {
+      try {
+        final userService = ref.read(userServiceProvider);
+        final currentUser = ref.read(currentUserProvider).value;
+        if (currentUser == null) return;
+        
+        final requests = await userService.getIncomingFriendRequests(currentUser.id);
+        final request = requests.firstWhere(
+          (r) => r.fromUserId == player.id,
+          orElse: () => throw Exception('Запрос не найден'),
+        );
+
+        if (result) {
+          await userService.acceptFriendRequest(request.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${player.name} добавлен в друзья'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        } else {
+          await userService.declineFriendRequest(request.id);
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Запрос дружбы ${player.name} отклонен'),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildProfileRow(String label, String value) {
@@ -327,7 +333,7 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
                                     : null,
                               ),
                               title: Text(member.name),
-                              subtitle: Text('Рейтинг: ${member.rating.toStringAsFixed(1)}'),
+                              subtitle: Text('${member.gamesPlayed} игр'),
                               onTap: () => _showPlayerProfile(member),
                             ),
                           );
@@ -446,7 +452,7 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
                                     : null,
                               ),
                               title: Text(member.name),
-                              subtitle: Text('Рейтинг: ${member.rating.toStringAsFixed(1)}'),
+                              subtitle: Text('${member.gamesPlayed} игр'),
                               onTap: () => _showPlayerProfile(member),
                             ),
                           );
@@ -606,7 +612,7 @@ class _TeamSelectionScreenState extends ConsumerState<TeamSelectionScreen> {
                                 : null,
                           ),
                           title: Text(member.name),
-                          subtitle: Text('Рейтинг: ${member.rating.toStringAsFixed(1)}'),
+                          subtitle: Text('${member.gamesPlayed} игр'),
                           onTap: () => _showPlayerProfile(member),
                         ),
                       );

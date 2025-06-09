@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
+import '../../../../core/errors/error_handler.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/user_team_model.dart';
+import '../../../../shared/widgets/dialogs/unified_dialogs.dart';
+import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
 
 class TeamMembersScreen extends ConsumerStatefulWidget {
   final String teamId;
@@ -276,14 +279,14 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
 
     return ListTile(
       onTap: () {
-        // Навигация к профилю игрока
-        context.push('/player/${member.id}?playerName=${Uri.encodeComponent(member.name)}');
+        // Показываем диалог профиля игрока
+        PlayerProfileDialog.show(context, ref, member.id, playerName: member.name);
       },
       leading: CircleAvatar(
         backgroundImage: member.photoUrl != null
             ? NetworkImage(member.photoUrl!)
             : null,
-        backgroundColor: AppColors.primary.withOpacity(0.1),
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
         child: member.photoUrl == null
             ? Text(
                 member.name.isNotEmpty ? member.name[0].toUpperCase() : '?',
@@ -327,7 +330,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Рейтинг: ${member.rating.toStringAsFixed(1)} • ${member.gamesPlayed} игр',
+            '${member.gamesPlayed} игр',
             style: const TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
@@ -418,12 +421,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
 
   void _showInviteFriendDialog() {
     if (_friends.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('У вас нет друзей для приглашения'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+      ErrorHandler.noData(context, 'друзей для приглашения');
       return;
     }
 
@@ -433,12 +431,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
     ).toList();
 
     if (availableFriends.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Все ваши друзья уже в командах или в этой команде'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+      ErrorHandler.noData(context, 'доступных друзей');
       return;
     }
 
@@ -458,7 +451,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                   backgroundImage: friend.photoUrl != null
                       ? NetworkImage(friend.photoUrl!)
                       : null,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   child: friend.photoUrl == null
                       ? Text(
                           friend.name.isNotEmpty ? friend.name[0].toUpperCase() : '?',
@@ -471,7 +464,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                 ),
                 title: Text(friend.name),
                 subtitle: Text(
-                  'Рейтинг: ${friend.rating.toStringAsFixed(1)} • ${friend.gamesPlayed} игр',
+                  '${friend.gamesPlayed} игр',
                   style: const TextStyle(fontSize: 12),
                 ),
                 onTap: () {
@@ -499,12 +492,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
     ).toList();
 
     if (availableFriends.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Нет доступных друзей для замены'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+      ErrorHandler.showWarning(context, 'Нет доступных друзей для замены');
       return;
     }
 
@@ -520,7 +508,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.1),
+                  color: AppColors.warning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -551,7 +539,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                         backgroundImage: friend.photoUrl != null
                             ? NetworkImage(friend.photoUrl!)
                             : null,
-                        backgroundColor: AppColors.primary.withOpacity(0.1),
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                         child: friend.photoUrl == null
                             ? Text(
                                 friend.name.isNotEmpty ? friend.name[0].toUpperCase() : '?',
@@ -564,7 +552,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
                       ),
                       title: Text(friend.name),
                       subtitle: Text(
-                        'Рейтинг: ${friend.rating.toStringAsFixed(1)} • ${friend.gamesPlayed} игр',
+                        '${friend.gamesPlayed} игр',
                         style: const TextStyle(fontSize: 12),
                       ),
                       onTap: () {
@@ -603,50 +591,23 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              replacedMember != null
-                  ? 'Приглашение отправлено ${friend.name} для замены ${replacedMember.name}'
-                  : 'Приглашение отправлено ${friend.name}',
-            ),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        final message = replacedMember != null
+            ? 'Приглашение отправлено ${friend.name} для замены ${replacedMember.name}'
+            : 'Приглашение отправлено ${friend.name}';
+        ErrorHandler.showSuccess(context, message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
 
   Future<void> _removeMember(UserModel member) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await UnifiedDialogs.showRemoveMember(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить из команды'),
-        content: Text('Удалить ${member.name} из команды?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+      memberName: member.name,
+      teamName: _team!.name,
     );
 
     if (confirmed == true) {
@@ -659,12 +620,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
         await teamService.removePlayerFromTeam(_team!.id, member.id, currentUser.id);
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${member.name} удален из команды'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ErrorHandler.removed(context, member.name);
 
           // Перезагружаем данные
           await _loadTeamData();
@@ -674,12 +630,7 @@ class _TeamMembersScreenState extends ConsumerState<TeamMembersScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }

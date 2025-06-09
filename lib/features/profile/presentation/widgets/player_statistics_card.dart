@@ -64,6 +64,12 @@ class PlayerStatisticsCard extends StatelessWidget {
                   value: '${player.wins}',
                   color: AppColors.warning,
                 ),
+                _StatisticItem(
+                  icon: Icons.score,
+                  label: 'Очки',
+                  value: player.totalScore.toString(),
+                  color: AppColors.secondary,
+                ),
               ],
             ),
             
@@ -84,13 +90,6 @@ class PlayerStatisticsCard extends StatelessWidget {
                     value: '${player.losses}',
                     icon: Icons.trending_down,
                     color: AppColors.error,
-                  ),
-                  const SizedBox(height: 8),
-                  _DetailedStatRow(
-                    label: 'Средняя оценка',
-                    value: player.rating.toStringAsFixed(1),
-                    icon: Icons.star,
-                    color: AppColors.secondary,
                   ),
                   const SizedBox(height: 8),
                   _DetailedStatRow(
@@ -128,10 +127,10 @@ class _StatisticItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.3),
+          color: color.withValues(alpha: 0.3),
         ),
       ),
       child: Column(

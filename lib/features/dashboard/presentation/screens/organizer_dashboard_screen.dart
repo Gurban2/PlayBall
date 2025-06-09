@@ -6,6 +6,9 @@ import '../../../teams/domain/entities/user_team_model.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/errors/error_handler.dart';
+import '../../../../shared/widgets/universal_card.dart';
+
 
 class OrganizerDashboardScreen extends ConsumerStatefulWidget {
   const OrganizerDashboardScreen({super.key});
@@ -15,7 +18,7 @@ class OrganizerDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   
   late TabController _tabController;
   bool _isLoading = false;
@@ -27,21 +30,25 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
   int _activeGames = 0;
   int _plannedGames = 0;
   int _completedGames = 0;
-  int _cancelledGames = 0;
-  int _totalParticipants = 0;
-  double _averageOccupancy = 0.0;
-  Map<String, int> _locationStats = {};
-  Map<GameMode, int> _gameModeStats = {};
+
+  final Map<String, int> _locationStats = {};
+  final Map<String, int> _gameModeStats = {};
   
   // Статистика команд
   int _totalTeams = 0;
   int _activeTeamsInGames = 0;
-  Map<String, int> _teamWinStats = {};
+  final Map<String, Map<String, int>> _teamWinStats = {};
+
+
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    
+    // Подписываемся на изменения состояния приложения
+    WidgetsBinding.instance.addObserver(this);
+    
     _loadDashboardData();
     
     // Автоматически обновляем статусы игр при загрузке
@@ -52,8 +59,21 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
 
   @override
   void dispose() {
+    // Отписываемся от изменений состояния приложения
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Обновляем данные при возвращении в приложение
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 Приложение возобновлено - обновляем dashboard организатора');
+      _loadDashboardData();
+    }
   }
 
   Future<void> _loadDashboardData() async {
@@ -86,12 +106,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     } catch (e) {
       debugPrint('Ошибка загрузки данных dashboard: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки данных: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     } finally {
       if (mounted) {
@@ -127,14 +142,8 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     _activeGames = _organizerRooms.where((r) => r.status == RoomStatus.active).length;
     _plannedGames = _organizerRooms.where((r) => r.status == RoomStatus.planned).length;
     _completedGames = _organizerRooms.where((r) => r.status == RoomStatus.completed).length;
-    _cancelledGames = _organizerRooms.where((r) => r.status == RoomStatus.cancelled).length;
     
-    _totalParticipants = _organizerRooms.fold(0, (sum, room) => sum + room.participants.length);
-    
-    if (_totalGames > 0) {
-      final totalCapacity = _organizerRooms.fold(0, (sum, room) => sum + room.maxParticipants);
-      _averageOccupancy = totalCapacity > 0 ? (_totalParticipants / totalCapacity) * 100 : 0;
-    }
+
     
     // Статистика по локациям
     _locationStats.clear();
@@ -145,7 +154,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     // Статистика по режимам игр
     _gameModeStats.clear();
     for (final room in _organizerRooms) {
-      _gameModeStats[room.gameMode] = (_gameModeStats[room.gameMode] ?? 0) + 1;
+      _gameModeStats[room.gameMode.toString()] = (_gameModeStats[room.gameMode.toString()] ?? 0) + 1;
     }
     
     // Статистика команд с учетом эффективного статуса
@@ -157,7 +166,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     // Статистика побед команд (пока заглушка)
     _teamWinStats.clear();
     for (final team in _organizerTeams) {
-      _teamWinStats[team.name] = 0; // TODO: Реализовать подсчет побед
+      _teamWinStats[team.name] = {}; // TODO: Реализовать подсчет побед
     }
   }
 
@@ -166,34 +175,40 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Dashboard организатора'),
+        title: const Text('Dashboard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        
+        toolbarHeight: 44, // Компактная высота
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 18),
             onPressed: _loadDashboardData,
+            padding: const EdgeInsets.all(6),
           ),
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: const Icon(Icons.add, size: 18),
             onPressed: () => context.push(AppRoutes.createRoom),
+            padding: const EdgeInsets.all(6),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          isScrollable: true,
-         
-          tabs: const [
-            Tab(icon: Icon(Icons.dashboard), text: 'Обзор'),
-            Tab(icon: Icon(Icons.play_arrow), text: 'Активные'),
-            Tab(icon: Icon(Icons.schedule), text: 'Запланированные'),
-            Tab(icon: Icon(Icons.history), text: 'История'),
-            Tab(icon: Icon(Icons.groups), text: 'Команды'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(36), // Компактная высота табов
+          child: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            isScrollable: true,
+            labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+            unselectedLabelStyle: const TextStyle(fontSize: 9, fontWeight: FontWeight.w500),
+            tabs: const [
+              Tab(text: 'Обзор'),
+              Tab(text: 'Активные'),
+              Tab(text: 'План'),
+              Tab(text: 'История'),
+              Tab(text: 'Команды'),
+            ],
+          ),
         ),
       ),
       body: _isLoading
@@ -218,180 +233,99 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
 
   Widget _buildOverviewTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(8), // Уменьшил padding
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Приветствие организатора
-          _buildOrganizerWelcome(),
+          // Компактная статистика игр
+          _buildCompactGamesStats(),
           
-          const SizedBox(height: 20),
-          
-          // Статистика игр организатора
-          _buildOrganizerGamesStats(),
-          
-          const SizedBox(height: 24),
+          const SizedBox(height: 12), // Уменьшил spacing
           
           // Быстрые действия
           _buildQuickActionsList(),
           
-          const SizedBox(height: 24),
-          
-          // Статистика команд организатора
-          _buildOrganizerTeamsStats(),
-          
-          const SizedBox(height: 24),
+          const SizedBox(height: 12), // Уменьшил spacing
           
           // Ближайшие игры
           _buildUpcomingGames(),
           
-          const SizedBox(height: 24),
+          const SizedBox(height: 12), // Уменьшил spacing
           
-          // Недавние завершенные игры
-          _buildRecentCompletedGames(),
+          // Статистика команд
+          _buildCompactTeamsStats(),
         ],
       ),
     );
   }
 
-  Widget _buildOrganizerWelcome() {
-    final userAsync = ref.watch(currentUserProvider);
-    final userName = userAsync.value?.name ?? 'Организатор';
-    
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.primaryContainer,
-            ],
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.waving_hand,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Привет, $userName!',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: _loadDashboardData,
-                  icon: Icon(
-                    Icons.refresh,
-                    color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Управляйте своими играми и командами',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.9),
-              ),
-            ),
-          ],
-        ),
-      ),
+  // Компактная статистика игр в стиле карточек
+  Widget _buildCompactGamesStats() {
+    return Row(
+      children: [
+        Expanded(child: _buildCompactStatCard('Активные', _activeGames, AppColors.success, Icons.play_arrow)),
+        const SizedBox(width: 8),
+        Expanded(child: _buildCompactStatCard('План', _plannedGames, AppColors.warning, Icons.schedule)),
+        const SizedBox(width: 8),
+        Expanded(child: _buildCompactStatCard('Завершены', _completedGames, AppColors.primary, Icons.check_circle)),
+      ],
     );
   }
 
-  Widget _buildOrganizerGamesStats() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  // Компактная статистика команд
+  Widget _buildCompactTeamsStats() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      height: 54,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.sports_volleyball,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Ваши игры',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+            Container(
+              width: 3,
+              height: 9,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(0.5),
+              ),
             ),
-            const SizedBox(height: 16),
-            
-            // Статистика игр - заменяем GridView на Column с Row
-            Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Активные',
-                        _activeGames.toString(),
-                        Icons.play_arrow,
-                        AppTheme.successColor,
-                        () => _tabController.animateTo(1),
-                      ),
+            const SizedBox(width: 6),
+            const Icon(Icons.groups, color: AppColors.primary, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Команды: $_totalTeams',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Запланированы',
-                        _plannedGames.toString(),
-                        Icons.schedule,
-                        AppTheme.warningColor,
-                        () => _tabController.animateTo(2),
-                      ),
+                  ),
+                  Text(
+                    'В играх: $_activeTeamsInGames',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Завершены',
-                        _completedGames.toString(),
-                        Icons.check_circle,
-                        Theme.of(context).colorScheme.primary,
-                        () => _tabController.animateTo(3),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Всего игр',
-                        _totalGames.toString(),
-                        Icons.sports_volleyball,
-                        Theme.of(context).colorScheme.secondary,
-                        () {},
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '$_totalTeams',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
             ),
           ],
         ),
@@ -399,56 +333,24 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        height: 80, // Фиксированная высота для предсказуемости
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
+  // Компактная карточка статистики используя универсальный компонент
+  Widget _buildCompactStatCard(String title, int value, Color color, IconData icon) {
+    return UniversalCard(
+      title: title,
+      accentColor: color,
+      leading: Icon(icon, color: color, size: 16),
+      trailing: Text(
+        value.toString(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
     );
   }
+
+
 
   Widget _buildOrganizerTeamsStats() {
     return Card(
@@ -660,100 +562,50 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
         
     upcomingGames.sort((a, b) => a.startTime.compareTo(b.startTime));
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.upcoming,
-                        color: AppTheme.warningColor,
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'Ближайшие игры',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (upcomingGames.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () => _tabController.animateTo(2),
-                    borderRadius: BorderRadius.circular(6),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Все',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.arrow_forward,
-                            size: 14,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+    if (upcomingGames.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(
+            'Ближайшие игры',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white70,
             ),
-            const SizedBox(height: 16),
-            
-            if (upcomingGames.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Нет запланированных игр',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ...upcomingGames.take(3).map((game) => 
-                _buildGamePreview(game),
-              ),
-          ],
+          ),
+        ),
+        ...upcomingGames.take(3).map((game) => _buildCompactGameCard(game)),
+      ],
+    );
+  }
+
+  Widget _buildCompactGameCard(RoomModel game) {
+    final isToday = _isSameDay(game.startTime, DateTime.now());
+    
+    return UniversalCard(
+      title: game.title,
+      subtitle: game.location,
+      accentColor: AppColors.warning,
+      onTap: () => _showGameDetails(game),
+      badge: isToday ? 'Today' : null,
+      badgeColor: AppColors.warning,
+      trailing: Text(
+        _formatTime(game.startTime),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.warning,
+          height: 0.8,
         ),
       ),
     );
   }
+
+
 
   Widget _buildRecentCompletedGames() {
     final recentGames = _organizerRooms
@@ -861,115 +713,150 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     final isUpcoming = game.status == RoomStatus.planned;
     final timeUntil = game.startTime.difference(DateTime.now());
     final isStartingSoon = isUpcoming && timeUntil.inHours < 2 && timeUntil.inMinutes > 0;
+    final statusColor = _getStatusColor(game.status);
+    final isActive = game.status == RoomStatus.active;
     
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
-        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isStartingSoon 
-              ? AppTheme.warningColor.withOpacity(0.1)
-              : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isStartingSoon 
-                ? AppTheme.warningColor.withOpacity(0.3)
-                : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          // Градиентный фон для активных игр
+          gradient: isActive ? LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              statusColor.withValues(alpha: 0.8),
+              statusColor.withValues(alpha: 0.6),
+            ],
+          ) : null,
+          color: isActive ? null : (isStartingSoon 
+              ? AppTheme.warningColor.withValues(alpha: 0.05)
+              : Colors.white),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          border: Border(
+            left: BorderSide(
+              color: statusColor,
+              width: 4,
+            ),
           ),
         ),
-        child: IntrinsicHeight(
-          child: Row(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(game.status).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _getStatusIcon(game.status),
-                  color: _getStatusColor(game.status),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
+              // Заголовок и время
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
                       game.title,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isActive ? Colors.white : Colors.black87,
                       ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            game.location,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                  ),
+                  const SizedBox(width: 12),
+                  // Время в правом верхнем углу
+                  Text(
+                    '${game.startTime.hour.toString().padLeft(2, '0')}:${game.startTime.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isActive ? Colors.white : statusColor,
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.people,
-                          size: 14,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 8),
+              
+              // Локация
+              Text(
+                game.location,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isActive ? Colors.white70 : Colors.grey[600],
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Дополнительная информация внизу
+              Row(
+                children: [
+                  // Участники
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.people,
+                        size: 12,
+                        color: isActive ? Colors.white70 : Colors.grey[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${game.participants.length}/${game.maxParticipants}',
+                        style: TextStyle(
+                          color: isActive ? Colors.white70 : Colors.grey[600],
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${game.participants.length}/${game.maxParticipants}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                      ),
+                    ],
+                  ),
+                  
+                  const Spacer(),
+                  
+                  if (isStartingSoon) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warningColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Скоро',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
                         ),
-                        if (isStartingSoon) ...[
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.warningColor,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  'Скоро',
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Статус
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isActive 
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : statusColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _getStatusText(game.status),
+                        style: TextStyle(
+                          color: isActive ? Colors.white : statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ],
-                ),
+                ],
               ),
             ],
           ),
@@ -991,141 +878,37 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     }
   }
 
-  IconData _getStatusIcon(RoomStatus status) {
-    switch (status) {
-      case RoomStatus.active:
-        return Icons.play_arrow;
-      case RoomStatus.planned:
-        return Icons.schedule;
-      case RoomStatus.completed:
-        return Icons.check_circle;
-      case RoomStatus.cancelled:
-        return Icons.cancel;
-    }
-  }
 
-  Color _getGameModeColor(GameMode mode) {
-    switch (mode) {
-      case GameMode.normal:
-        return AppColors.primary;
-      case GameMode.team_friendly:
-        return AppColors.secondary;
-      case GameMode.tournament:
-        return AppColors.accent;
-    }
-  }
 
   Widget _buildQuickActionsList() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Быстрые действия',
-              style: AppTextStyles.heading3,
-              
-            ),
-            const SizedBox(height: 16),
-            
-            _buildActionTile(
-              'Создать новую игру',
-              'Организовать волейбольную игру',
-              Icons.add_circle,
-              AppColors.primary,
-              () => context.push(AppRoutes.createRoom),
-            ),
-            
-            const SizedBox(height: 8),
-            
-            _buildActionTile(
-              'Управление командами',
-              'Посмотреть и управлять командами',
-              Icons.groups,
-              AppColors.secondary,
-              () => _tabController.animateTo(4),
-            ),
-            
-            const SizedBox(height: 8),
-            
-            _buildActionTile(
-              'История игр',
-              'Просмотр завершенных игр',
-              Icons.history,
-              AppColors.warning,
-              () => _tabController.animateTo(3),
-            ),
-          ],
-        ),
-      ),
+    return Row(
+      children: [
+        Expanded(child: _buildCompactActionCard('Создать игру', Icons.add_circle, AppColors.primary, () => context.push(AppRoutes.createRoom))),
+        const SizedBox(width: 8),
+        Expanded(child: _buildCompactActionCard('Команды', Icons.groups, AppColors.secondary, () => _tabController.animateTo(4))),
+        const SizedBox(width: 8),
+        Expanded(child: _buildCompactActionCard('История', Icons.history, AppColors.warning, () => _tabController.animateTo(3))),
+      ],
     );
   }
 
-  Widget _buildActionTile(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
+  Widget _buildCompactActionCard(String title, IconData icon, Color color, VoidCallback onTap) {
+    return UniversalCard(
+      title: title,
+      accentColor: color,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.2)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: AppColors.text,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-          ],
-        ),
-      ),
+      leading: Icon(icon, color: color, size: 16),
     );
   }
+
+
 
   Widget _buildActiveGamesTab() {
     final activeGames = _organizerRooms
         .where((room) => room.status == RoomStatus.active)
         .toList();
     
-    return _buildGamesTable(activeGames, 'Нет активных игр');
+    return _buildCompactGamesList(activeGames, 'Нет активных игр', AppColors.success);
   }
 
   Widget _buildPlannedGamesTab() {
@@ -1134,7 +917,63 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     
-    return _buildGamesTable(plannedGames, 'Нет запланированных игр');
+    return _buildCompactGamesList(plannedGames, 'Нет запланированных игр', AppColors.warning);
+  }
+
+  Widget _buildCompactGamesList(List<RoomModel> games, String emptyMessage, Color accentColor) {
+    if (games.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.sports_volleyball_outlined,
+                size: 48,
+                color: Colors.white54,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                emptyMessage,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: games.length,
+      itemBuilder: (context, index) {
+        final game = games[index];
+        final isToday = _isSameDay(game.startTime, DateTime.now());
+        
+        return UniversalCard(
+          title: game.title,
+          subtitle: '${game.location} • ${game.participants.length}/${game.maxParticipants}',
+          accentColor: accentColor,
+          onTap: () => _showGameDetails(game),
+          badge: isToday ? 'Today' : null,
+          badgeColor: accentColor,
+          trailing: Text(
+            _formatTime(game.startTime),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: accentColor,
+              height: 0.8,
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildHistoryTab() {
@@ -1147,51 +986,159 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     
     return Column(
       children: [
-        // Кнопка очистки истории
+        // Компактная кнопка очистки истории
         if (historyGames.isNotEmpty)
           Container(
+            margin: const EdgeInsets.all(8),
+            height: 36,
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
             child: ElevatedButton.icon(
               onPressed: _clearCompletedGames,
-              icon: const Icon(Icons.clear_all),
-              label: const Text('Очистить историю'),
+              icon: const Icon(Icons.clear_all, size: 16),
+              label: const Text('Очистить', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
             ),
           ),
         
         // Список игр
         Expanded(
-          child: _buildGamesTable(historyGames, 'Нет завершенных игр'),
+          child: _buildCompactGamesList(historyGames, 'Нет завершенных игр', AppColors.primary),
         ),
       ],
     );
   }
 
   Widget _buildTeamsTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Статистика команд
-          _buildTeamsStatsGrid(),
-          
-          const SizedBox(height: 24),
-          
-          // Кнопка создания команды
-          if (_organizerTeams.isEmpty) ...[
-            _buildCreateTeamCard(),
-            const SizedBox(height: 24),
-          ],
-          
-          // Список команд
-          _buildTeamsList(),
-        ],
-      ),
+    if (_organizerTeams.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.groups_outlined,
+                size: 48,
+                color: Colors.white54,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'У вас пока нет команд',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _showCreateTeamDialog,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Создать команду'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _organizerTeams.length,
+      itemBuilder: (context, index) {
+        final team = _organizerTeams[index];
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          height: 54,
+          decoration: BoxDecoration(
+            color: AppColors.secondary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showTeamDetails(team),
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: AppColors.secondary,
+                        borderRadius: BorderRadius.circular(0.5),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    CircleAvatar(
+                      radius: 12,
+                      backgroundColor: AppColors.secondary.withValues(alpha: 0.1),
+                      backgroundImage: team.photoUrl != null ? NetworkImage(team.photoUrl!) : null,
+                      child: team.photoUrl == null 
+                          ? Text(
+                              team.name.isNotEmpty ? team.name[0].toUpperCase() : 'T',
+                              style: const TextStyle(
+                                color: AppColors.secondary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            team.name,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              height: 1.4,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${team.members.length}/${team.maxMembers} участников',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.grey[600],
+                              height: 1.3,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      team.members.length >= team.maxMembers ? Icons.check_circle : Icons.people,
+                      size: 16,
+                      color: team.members.length >= team.maxMembers ? AppColors.success : AppColors.secondary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1358,7 +1305,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
               children: [
                 CircleAvatar(
                   radius: 20,
-                  backgroundColor: AppColors.secondary.withOpacity(0.1),
+                  backgroundColor: AppColors.secondary.withValues(alpha: 0.1),
                   child: Text(
                     team.name.isNotEmpty ? team.name[0].toUpperCase() : 'T',
                     style: const TextStyle(
@@ -1394,7 +1341,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'Побед: ${_teamWinStats[team.name] ?? 0}',
+                      'Побед: ${_teamWinStats[team.name]?.values.fold(0, (sum, value) => sum + value) ?? 0}',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -1405,8 +1352,8 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: team.members.length >= 6 
-                            ? AppColors.success.withOpacity(0.1)
-                            : AppColors.warning.withOpacity(0.1),
+                            ? AppColors.success.withValues(alpha: 0.1)
+                            : AppColors.warning.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -1473,6 +1420,8 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
   }
 
   Widget _buildDetailedRoomCard(RoomModel room) {
+    final isToday = _isSameDay(room.startTime, DateTime.now());
+    
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
@@ -1497,10 +1446,29 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
                       ),
                     ),
                   ),
+                  // Бейдж "Today" если игра сегодня
+                  if (isToday) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Today',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(room.status).withOpacity(0.1),
+                      color: _getStatusColor(room.status).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -1633,20 +1601,13 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
 
   void _editGame(RoomModel room) {
     // TODO: Реализовать редактирование игры
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Функция редактирования в разработке')),
-    );
+    ErrorHandler.showWarning(context, 'Функция редактирования в разработке');
   }
 
   void _showCreateTeamDialog() {
     // Проверяем, есть ли уже команда у организатора
     if (_organizerTeams.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('У организатора может быть только одна команда'),
-          backgroundColor: AppColors.warning,
-        ),
-      );
+      ErrorHandler.showWarning(context, 'У организатора может быть только одна команда');
       return;
     }
 
@@ -1694,9 +1655,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
 
   Future<void> _createTeam(String teamName) async {
     if (teamName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите название команды')),
-      );
+      ErrorHandler.showError(context, 'Введите название команды');
       return;
     }
 
@@ -1723,21 +1682,11 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
       await _loadDashboardData();
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Команда "$teamName" создана успешно!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        ErrorHandler.showSuccess(context, 'Команда "$teamName" создана успешно!');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка создания команды: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ErrorHandler.showError(context, e);
       }
     }
   }
@@ -1750,7 +1699,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundColor: AppColors.secondary.withOpacity(0.1),
+              backgroundColor: AppColors.secondary.withValues(alpha: 0.1),
               child: Text(
                 team.name.isNotEmpty ? team.name[0].toUpperCase() : 'T',
                 style: const TextStyle(
@@ -1781,28 +1730,18 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
               
               const SizedBox(height: 16),
               
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _editTeam(team),
-                      icon: const Icon(Icons.edit, size: 16),
-                      label: const Text('Редактировать'),
-                    ),
+              // Кнопка управления участниками
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showTeamMembersManagement(team),
+                  icon: const Icon(Icons.people, size: 16),
+                  label: const Text('Участники'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.secondary,
+                    foregroundColor: Colors.white,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showTeamMembersManagement(team),
-                      icon: const Icon(Icons.people, size: 16),
-                      label: const Text('Участники'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.secondary,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
               
               const SizedBox(height: 12),
@@ -1868,72 +1807,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     return '${date.day}.${date.month}.${date.year}';
   }
 
-  void _editTeam(UserTeamModel team) {
-    Navigator.of(context).pop(); // Закрываем текущий диалог
-    
-    final TextEditingController teamNameController = TextEditingController(text: team.name);
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Редактировать команду'),
-        content: TextField(
-          controller: teamNameController,
-          decoration: const InputDecoration(
-            labelText: 'Название команды',
-            border: OutlineInputBorder(),
-          ),
-          maxLength: 30,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => _updateTeamName(team, teamNameController.text.trim()),
-            child: const Text('Сохранить'),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Future<void> _updateTeamName(UserTeamModel team, String newName) async {
-    if (newName.isEmpty || newName == team.name) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    try {
-      final teamService = ref.read(teamServiceProvider);
-      await teamService.updateUserTeam(team.id, {'name': newName});
-      
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      
-      // Перезагружаем данные
-      await _loadDashboardData();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Название команды изменено на "$newName"'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
 
   // Очистка завершенных игр
   Future<void> _clearCompletedGames() async {
@@ -1974,21 +1848,11 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
         await _loadDashboardData();
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('История игр очищена'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ErrorHandler.showSuccess(context, 'История игр очищена');
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }
@@ -2032,23 +1896,51 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
         await _loadDashboardData();
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Команда "${team.name}" удалена'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ErrorHandler.showSuccess(context, 'Команда "${team.name}" удалена');
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка: ${e.toString()}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          ErrorHandler.showError(context, e);
         }
       }
     }
   }
+
+  // Функция для проверки, является ли дата сегодняшней
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+           date1.month == date2.month &&
+           date1.day == date2.day;
+  }
+
+  String _formatTime(DateTime dateTime) {
+    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _showGameDetails(RoomModel game) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(game.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Место: ${game.location}'),
+            Text('Время: ${_formatTime(game.startTime)}'),
+            Text('Участники: ${game.participants.length}/${game.maxParticipants}'),
+            Text('Статус: ${_getStatusText(game.status)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
 } 
