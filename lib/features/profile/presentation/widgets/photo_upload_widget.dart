@@ -66,15 +66,12 @@ class _PhotoUploadWidgetState extends ConsumerState<PhotoUploadWidget> {
         );
       }
 
-             if (photoUrl != null) {
-         // Обновляем профиль пользователя в Firestore
-         final userService = ref.read(userServiceProvider);
-         await userService.updateUser(userId: widget.userId, photoUrl: photoUrl);
-
-         widget.onPhotoUploaded(photoUrl);
+                   if (photoUrl != null) {
+        // Уведомляем родительский компонент о новом URL фото
+        widget.onPhotoUploaded(photoUrl);
 
         if (mounted) {
-          ErrorHandler.showSuccess(context, 'Фото профиля обновлено!');
+          ErrorHandler.showSuccess(context, 'Фото загружено! Нажмите "Сохранить" для применения изменений.');
         }
       } else {
         if (mounted) {

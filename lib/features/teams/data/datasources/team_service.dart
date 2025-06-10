@@ -10,6 +10,7 @@ import '../../../teams/domain/entities/team_application_model.dart';
 import '../../../teams/domain/entities/team_activity_check_model.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/utils/game_time_utils.dart';
+import '../../../notifications/domain/entities/game_notification_model.dart';
 
 class TeamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -938,9 +939,9 @@ class TeamService {
       throw Exception('Вы не являетесь участником этой команды');
     }
 
-    // Проверяем, что игрок еще не подтвердил готовность
-    if (activityCheck.readyPlayers.contains(playerId)) {
-      throw Exception('Вы уже подтвердили свою готовность');
+    // Проверяем, что игрок еще не ответил
+    if (activityCheck.hasPlayerResponded(playerId)) {
+      throw Exception('Вы уже ответили на эту проверку');
     }
 
     // Добавляем игрока в список готовых
@@ -960,6 +961,50 @@ class TeamService {
       await _completeActivityCheck(checkId);
       debugPrint('🎉 Все игроки команды ${activityCheck.teamId} готовы!');
     }
+  }
+
+  /// Игрок отклоняет свою готовность
+  Future<void> declinePlayerReadiness(String checkId, String playerId) async {
+    final checkDoc = await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .get();
+
+    if (!checkDoc.exists) {
+      throw Exception('Проверка активности не найдена');
+    }
+
+    final activityCheck = TeamActivityCheckModel.fromMap(
+      checkDoc.data()!,
+      checkDoc.id,
+    );
+
+    // Проверяем, что проверка еще активна
+    if (!activityCheck.isActive || activityCheck.isExpired) {
+      throw Exception('Время для ответа истекло');
+    }
+
+    // Проверяем, что игрок в списке участников команды
+    if (!activityCheck.teamMembers.contains(playerId)) {
+      throw Exception('Вы не являетесь участником этой команды');
+    }
+
+    // Проверяем, что игрок еще не ответил
+    if (activityCheck.hasPlayerResponded(playerId)) {
+      throw Exception('Вы уже ответили на эту проверку');
+    }
+
+    // Добавляем игрока в список не готовых
+    final updatedNotReadyPlayers = [...activityCheck.notReadyPlayers, playerId];
+
+    await _firestore
+        .collection('team_activity_checks')
+        .doc(checkId)
+        .update({
+      'notReadyPlayers': updatedNotReadyPlayers,
+    });
+
+    debugPrint('❌ Игрок $playerId отклонил готовность в проверке $checkId');
   }
 
   /// Получить проверки активности для конкретного игрока
@@ -1058,24 +1103,92 @@ class TeamService {
   /// Очистить старые проверки активности (старше 24 часов)
   Future<void> cleanupOldActivityChecks() async {
     try {
-      final cutoffTime = DateTime.now().subtract(const Duration(hours: 24));
+      final yesterday = DateTime.now().subtract(const Duration(hours: 24));
       
       final snapshot = await _firestore
           .collection('team_activity_checks')
-          .where('startedAt', isLessThan: Timestamp.fromDate(cutoffTime))
+          .where('startedAt', isLessThan: Timestamp.fromDate(yesterday))
           .get();
 
       final batch = _firestore.batch();
-      
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
 
       await batch.commit();
-      
-      debugPrint('🧹 Удалено ${snapshot.docs.length} старых проверок активности');
+      debugPrint('🧹 Очищено ${snapshot.docs.length} старых проверок активности');
     } catch (e) {
       debugPrint('❌ Ошибка очистки старых проверок активности: $e');
+    }
+  }
+
+  /// Завершить истекшие проверки активности
+  Future<void> completeExpiredActivityChecks() async {
+    try {
+      final now = DateTime.now();
+      
+      final snapshot = await _firestore
+          .collection('team_activity_checks')
+          .where('isActive', isEqualTo: true)
+          .where('expiresAt', isLessThan: Timestamp.fromDate(now))
+          .get();
+
+      final batch = _firestore.batch();
+      List<TeamActivityCheckModel> expiredChecks = [];
+      
+      for (final doc in snapshot.docs) {
+        final check = TeamActivityCheckModel.fromMap(doc.data(), doc.id);
+        expiredChecks.add(check);
+        
+        batch.update(doc.reference, {
+          'isActive': false,
+          'isCompleted': true,
+        });
+      }
+
+      await batch.commit();
+      
+      if (expiredChecks.isNotEmpty) {
+        debugPrint('⏰ Автоматически завершено ${expiredChecks.length} истекших проверок готовности');
+        
+        // Отправляем уведомления организаторам о завершении проверок
+        await _notifyOrganizersAboutCompletedChecks(expiredChecks);
+      }
+    } catch (e) {
+      debugPrint('❌ Ошибка завершения истекших проверок: $e');
+    }
+  }
+
+  /// Отправка уведомлений организаторам о завершенных проверках
+  Future<void> _notifyOrganizersAboutCompletedChecks(List<TeamActivityCheckModel> checks) async {
+    try {
+      for (final check in checks) {
+        // Получаем команду для получения названия
+        final team = await getUserTeamById(check.teamId);
+        if (team == null) continue;
+
+        // Создаем уведомление для организатора
+        final notification = GameNotificationModel.activityCheckCompleted(
+          id: 'check_completed_${check.id}',
+          teamId: check.teamId,
+          teamName: team.name,
+          organizerId: check.organizerId,
+          organizerName: check.organizerName,
+          checkId: check.id,
+          readyCount: check.readyPlayers.length,
+          notReadyCount: check.notReadyPlayers.length,
+          totalCount: check.teamMembers.length,
+        );
+
+        // Отправляем уведомление через GameNotificationService
+        await _firestore
+            .collection('game_notifications')
+            .add(notification.toMap());
+
+        debugPrint('📢 Отправлено уведомление о завершении проверки организатору ${check.organizerId}');
+      }
+    } catch (e) {
+      debugPrint('❌ Ошибка отправки уведомлений о завершении проверок: $e');
     }
   }
 } 

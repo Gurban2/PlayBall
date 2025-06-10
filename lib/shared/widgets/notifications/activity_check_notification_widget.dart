@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/constants/constants.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/providers.dart';
@@ -21,17 +22,16 @@ class ActivityCheckNotificationWidget extends ConsumerStatefulWidget {
 }
 
 class _ActivityCheckNotificationWidgetState extends ConsumerState<ActivityCheckNotificationWidget> {
-  bool _isConfirming = false;
-  bool _isConfirmed = false;
+  bool _isChecked = false;
 
   @override
   void initState() {
     super.initState();
-    _checkIfAlreadyConfirmed();
+    _checkIfAlreadyResponded();
   }
 
-  /// Проверяем, подтвердил ли уже игрок готовность
-  Future<void> _checkIfAlreadyConfirmed() async {
+  /// Проверяем, ответил ли уже игрок
+  Future<void> _checkIfAlreadyResponded() async {
     final checkId = widget.notification.additionalData?['checkId'] as String?;
     if (checkId == null) return;
 
@@ -44,7 +44,7 @@ class _ActivityCheckNotificationWidgetState extends ConsumerState<ActivityCheckN
       
       if (activityCheck != null && activityCheck.isPlayerReady(currentUser.id)) {
         setState(() {
-          _isConfirmed = true;
+          _isChecked = true;
         });
       }
     } catch (e) {
@@ -52,98 +52,95 @@ class _ActivityCheckNotificationWidgetState extends ConsumerState<ActivityCheckN
     }
   }
 
-  Future<void> _confirmReadiness() async {
-    final checkId = widget.notification.additionalData?['checkId'] as String?;
-    if (checkId == null) return;
+  void _navigateToTeam() {
+    final teamId = widget.notification.additionalData?['teamId'] as String?;
+    if (teamId == null) {
+      ErrorHandler.showError(context, 'Не удалось найти команду');
+      return;
+    }
 
-    final currentUser = ref.read(currentUserProvider).value;
-    if (currentUser == null) return;
+    // Отмечаем уведомление как прочитанное
+    widget.onMarkAsRead?.call();
 
-    setState(() {
-      _isConfirming = true;
-    });
+    // Переходим на страницу команды
+    context.push('/team-view/$teamId');
+  }
 
-    try {
-      final activityService = ref.read(teamActivityServiceProvider);
-      await activityService.confirmReadiness(
-        checkId: checkId,
-        playerId: currentUser.id,
-      );
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
 
-      setState(() {
-        _isConfirmed = true;
-      });
-
-      if (mounted) {
-        ErrorHandler.showSuccess(context, 'Готовность подтверждена!');
-
-        // Отмечаем уведомление как прочитанное
-        widget.onMarkAsRead?.call();
-      }
-    } catch (e) {
-      if (mounted) {
-        ErrorHandler.showError(context, e);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isConfirming = false;
-        });
-      }
+    if (difference.inMinutes < 1) {
+      return 'Только что';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes} мин назад';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours} ч назад';
+    } else {
+      return '${difference.inDays} дн назад';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final checkId = widget.notification.additionalData?['checkId'] as String?;
     final teamName = widget.notification.additionalData?['teamName'] as String? ?? 'Команда';
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
+    final isCompletedNotification = widget.notification.type == GameNotificationType.activityCheckCompleted;
+    
+    return GestureDetector(
+      onTap: _navigateToTeam,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isCompletedNotification 
+                ? AppColors.success
+                : (_isChecked ? AppColors.success : AppColors.warning),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок с иконкой
+            // Заголовок
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.1),
+                    color: isCompletedNotification 
+                        ? AppColors.success.withValues(alpha: 0.1)
+                        : ((_isChecked ? AppColors.success : AppColors.warning).withValues(alpha: 0.1)),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    Icons.notification_important,
-                    color: AppColors.warning,
-                    size: 24,
+                    isCompletedNotification 
+                        ? Icons.check_circle 
+                        : (_isChecked ? Icons.check_circle : Icons.access_time),
+                    color: isCompletedNotification 
+                        ? AppColors.success
+                        : (_isChecked ? AppColors.success : AppColors.warning),
+                    size: 20,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.notification.title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Команда: $teamName',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    widget.notification.title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.text,
+                    ),
                   ),
                 ),
               ],
@@ -151,71 +148,71 @@ class _ActivityCheckNotificationWidgetState extends ConsumerState<ActivityCheckN
             
             const SizedBox(height: 12),
             
+            // Команда
+            Text(
+              'Команда: $teamName',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+            
+            const SizedBox(height: 8),
+            
             // Сообщение
             Text(
               widget.notification.message,
               style: const TextStyle(
                 fontSize: 14,
-                color: AppColors.textSecondary,
+                color: AppColors.text,
               ),
             ),
             
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             
-            // Кнопка действия или статус
-            if (checkId != null) ...[
-              if (_isConfirmed) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.success),
+            // Статус или призыв к действию
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isCompletedNotification 
+                    ? AppColors.success.withValues(alpha: 0.1)
+                    : (_isChecked 
+                        ? AppColors.success.withValues(alpha: 0.1)
+                        : AppColors.primary.withValues(alpha: 0.1)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isCompletedNotification 
+                        ? Icons.assessment 
+                        : (_isChecked ? Icons.check_circle : Icons.touch_app),
+                    color: isCompletedNotification 
+                        ? AppColors.success
+                        : (_isChecked ? AppColors.success : AppColors.primary),
+                    size: 16,
                   ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle, color: AppColors.success, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Готовность подтверждена',
-                        style: TextStyle(
-                          color: AppColors.success,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isConfirming ? null : _confirmReadiness,
-                    icon: _isConfirming 
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Icon(Icons.check),
-                    label: Text(_isConfirming ? 'Подтверждение...' : 'Готов'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isCompletedNotification
+                          ? 'Нажмите, чтобы посмотреть результаты'
+                          : (_isChecked 
+                              ? 'Вы уже ответили' 
+                              : 'Нажмите, чтобы ответить'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isCompletedNotification 
+                            ? AppColors.success
+                            : (_isChecked ? AppColors.success : AppColors.primary),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ],
+                ],
+              ),
+            ),
             
             const SizedBox(height: 8),
             
@@ -231,20 +228,5 @@ class _ActivityCheckNotificationWidgetState extends ConsumerState<ActivityCheckN
         ),
       ),
     );
-  }
-
-  String _formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inMinutes < 1) {
-      return 'только что';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes} мин назад';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours} ч назад';
-    } else {
-      return '${dateTime.day}.${dateTime.month}.${dateTime.year}';
-    }
   }
 } 

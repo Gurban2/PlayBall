@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/providers.dart';
 import '../../../../core/errors/error_handler.dart';
@@ -8,6 +9,7 @@ import '../../../../shared/widgets/universal_card.dart';
 import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
 import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/user_team_model.dart';
+import '../../../teams/domain/entities/team_activity_check_model.dart';
 import '../../../../shared/widgets/dialogs/unified_dialogs.dart';
 
 
@@ -476,18 +478,143 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
             ),
             const SizedBox(height: 12),
             
-            // Кнопки управления для организатора
-            ElevatedButton.icon(
-              onPressed: _checkTeamReadiness,
-              icon: const Icon(Icons.check_circle, size: 20),
-              label: const Text('Проверить готовность'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-              ),
+            // Проверяем активную проверку готовности
+            FutureBuilder<TeamActivityCheckModel?>(
+              future: _getActiveCheck(),
+              builder: (context, snapshot) {
+                final activeCheck = snapshot.data;
+                
+                if (activeCheck != null) {
+                  // Показываем статус активной проверки
+                  return _buildActiveCheckCard(activeCheck);
+                } else {
+                  // Показываем кнопку запуска проверки
+                  return _buildStartCheckButton();
+                }
+              },
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Получить активную проверку для команды
+  Future<TeamActivityCheckModel?> _getActiveCheck() async {
+    if (_userTeam == null) return null;
+    
+    try {
+      final teamActivityService = ref.read(teamActivityServiceProvider);
+      return await teamActivityService.getActiveCheck(_userTeam!.id);
+    } catch (e) {
+      debugPrint('Ошибка получения активной проверки: $e');
+      return null;
+    }
+  }
+
+  /// Карточка активной проверки готовности
+  Widget _buildActiveCheckCard(TeamActivityCheckModel activeCheck) {
+    final timeLeft = activeCheck.expiresAt.difference(DateTime.now());
+    final isExpired = activeCheck.isExpired;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isExpired 
+            ? AppColors.error.withValues(alpha: 0.1)
+            : AppColors.warning.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isExpired ? AppColors.error : AppColors.warning,
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isExpired ? Icons.timer_off : Icons.timer,
+                color: isExpired ? AppColors.error : AppColors.warning,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isExpired ? 'Проверка готовности завершена' : 'Активная проверка готовности',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isExpired ? AppColors.error : AppColors.warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Статистика
+          Text(
+            'Готовы: ${activeCheck.readyPlayers.length}/${activeCheck.teamMembers.length}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          if (activeCheck.notReadyPlayers.isNotEmpty)
+            Text(
+              'Не готовы: ${activeCheck.notReadyPlayers.length}',
+              style: const TextStyle(fontSize: 12, color: AppColors.error),
+            ),
+          if (activeCheck.notRespondedCount > 0)
+            Text(
+              'Не ответили: ${activeCheck.notRespondedCount}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          
+          const SizedBox(height: 8),
+          
+          // Время
+          Text(
+            isExpired 
+                ? 'Время истекло'
+                : 'Осталось: ${timeLeft.inMinutes} мин',
+            style: TextStyle(
+              fontSize: 12,
+              color: isExpired ? AppColors.error : AppColors.warning,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // Кнопка для перехода к проверке
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => context.push('/team-view/${_userTeam!.id}'),
+              icon: Icon(isExpired ? Icons.assessment : Icons.visibility),
+              label: Text(isExpired ? 'Посмотреть результаты' : 'Перейти к проверке'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isExpired ? AppColors.primary : AppColors.warning,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Кнопка запуска новой проверки готовности
+  Widget _buildStartCheckButton() {
+    return ElevatedButton.icon(
+      onPressed: _checkTeamReadiness,
+      icon: const Icon(Icons.check_circle, size: 20),
+      label: const Text('Проверить готовность'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.success,
+        foregroundColor: Colors.white,
       ),
     );
   }
@@ -534,8 +661,6 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       ),
     );
   }
-
-
 
   Widget _buildCompactStat(String label, String value, IconData icon, Color color) {
     return Column(
@@ -872,7 +997,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Проверка готовности команды',
+                'Запуск проверки готовности',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -908,7 +1033,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
                       children: [
-                        const Icon(Icons.check, color: AppColors.success, size: 16),
+                        const Icon(Icons.person, color: AppColors.primary, size: 16),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -920,7 +1045,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                         ),
                         if (isOwner)
                           const Text(
-                            'Капитан',
+                            'Организатор',
                             style: TextStyle(
                               fontSize: 12,
                               color: AppColors.warning,
@@ -937,25 +1062,18 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _teamMembers.length >= 6 
-                        ? AppColors.success.withValues(alpha: 0.1)
-                        : AppColors.warning.withValues(alpha: 0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        _teamMembers.length >= 6 ? Icons.check_circle : Icons.warning,
-                        color: _teamMembers.length >= 6 ? AppColors.success : AppColors.warning,
-                      ),
+                      const Icon(Icons.info_outline, color: AppColors.primary),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _teamMembers.length >= 6 
-                              ? 'Команда готова к игре!'
-                              : 'Нужно еще ${6 - _teamMembers.length} игроков',
+                          'Всем игрокам команды будет отправлено уведомление с просьбой подтвердить готовность. У них будет 15 минут на ответ.',
                           style: TextStyle(
-                            color: _teamMembers.length >= 6 ? AppColors.success : AppColors.warning,
+                            color: AppColors.primary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -970,10 +1088,49 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Закрыть'),
+            child: const Text('Отмена'),
           ),
+          if (_teamMembers.isNotEmpty) ...[
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _startActivityCheck();
+              },
+              icon: const Icon(Icons.rocket_launch),
+              label: const Text('Запустить проверку'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Запуск проверки активности команды
+  Future<void> _startActivityCheck() async {
+    final currentUser = ref.read(currentUserProvider).value;
+    if (currentUser == null || _userTeam == null) return;
+
+    try {
+      final activityService = ref.read(teamActivityServiceProvider);
+      await activityService.startActivityCheck(
+        teamId: _userTeam!.id,
+        organizer: currentUser,
+      );
+
+      if (mounted) {
+        ErrorHandler.showSuccess(context, 'Проверка готовности запущена! Уведомления отправлены всем игрокам команды.');
+        
+        // Переходим на страницу команды для отслеживания статуса
+        context.push('/team-view/${_userTeam!.id}');
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
+    }
   }
 } 

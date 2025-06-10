@@ -8,6 +8,7 @@ import '../../../../core/providers.dart';
 import '../../../../core/services/background_scheduler_service.dart';
 import '../../../../shared/widgets/navigation/hamburger_menu.dart';
 import '../../../auth/domain/entities/user_model.dart';
+import '../../../teams/domain/entities/team_activity_check_model.dart';
 
 
 
@@ -34,6 +35,7 @@ class ScaffoldWithBottomNav extends ConsumerStatefulWidget {
 class _ScaffoldWithBottomNavState extends ConsumerState<ScaffoldWithBottomNav> 
     with WidgetsBindingObserver {
   int selectedIndex = 0;
+  bool _hasActiveCheck = false;
 
   @override
   void initState() {
@@ -49,6 +51,8 @@ class _ScaffoldWithBottomNavState extends ConsumerState<ScaffoldWithBottomNav>
         backgroundScheduler.start(ref);
       }
     });
+
+    _checkForActiveReadinessCheck();
   }
 
   @override
@@ -91,6 +95,25 @@ class _ScaffoldWithBottomNavState extends ConsumerState<ScaffoldWithBottomNav>
     }
   }
 
+  /// Проверяем наличие активной проверки готовности
+  Future<void> _checkForActiveReadinessCheck() async {
+    final currentUser = ref.read(currentUserProvider).value;
+    if (currentUser?.teamId == null) return;
+
+    try {
+      final teamActivityService = ref.read(teamActivityServiceProvider);
+      final activeCheck = await teamActivityService.getActiveCheck(currentUser!.teamId!);
+      
+      if (mounted) {
+        setState(() {
+          _hasActiveCheck = activeCheck != null && !activeCheck.isExpired;
+        });
+      }
+    } catch (e) {
+      // Игнорируем ошибки
+    }
+  }
+
   // Страницы, где нижняя навигация НЕ должна отображаться
   static const List<String> _pagesWithoutBottomNav = [
     '/welcome',
@@ -121,6 +144,13 @@ class _ScaffoldWithBottomNavState extends ConsumerState<ScaffoldWithBottomNav>
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
     
+    // Периодически проверяем активную проверку
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(seconds: 30), () {
+        if (mounted) _checkForActiveReadinessCheck();
+      });
+    });
+
     return userAsync.when(
       loading: () => Scaffold(
         body: widget.child,
@@ -252,10 +282,27 @@ class _ScaffoldWithBottomNavState extends ConsumerState<ScaffoldWithBottomNav>
                   activeIcon: Icon(Icons.sports_volleyball),
                   label: 'Игры',
                 ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.groups_outlined),
-                  activeIcon: Icon(Icons.groups),
-                  label: 'Команда',
+                BottomNavigationBarItem(
+                  icon: Stack(
+                    children: [
+                      const Icon(Icons.groups),
+                      // Индикатор активной проверки
+                      if (_hasActiveCheck)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: AppColors.warning,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  label: 'Моя команда',
                 ),
               ],
             ),

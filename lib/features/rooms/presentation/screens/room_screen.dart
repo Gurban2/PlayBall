@@ -31,10 +31,6 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   @override
   void initState() {
     super.initState();
-    // Запускаем автоматическую очистку при открытии экрана
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _autoUpdateGameStatuses();
-    });
   }
 
   @override

@@ -7,9 +7,10 @@ class TeamActivityCheckModel {
   final String organizerId;
   final String organizerName;
   final DateTime startedAt;
-  final DateTime expiresAt; // Время окончания проверки (2 часа)
+  final DateTime expiresAt; // Время окончания проверки (15 минут)
   final List<String> teamMembers; // Все игроки команды (кроме организатора)
   final List<String> readyPlayers; // Игроки, которые подтвердили готовность
+  final List<String> notReadyPlayers; // Игроки, которые отклонили готовность
   final bool isActive; // Активна ли проверка
   final bool isCompleted; // Завершена ли проверка
 
@@ -22,6 +23,7 @@ class TeamActivityCheckModel {
     required this.expiresAt,
     required this.teamMembers,
     this.readyPlayers = const [],
+    this.notReadyPlayers = const [],
     this.isActive = true,
     this.isCompleted = false,
   });
@@ -40,9 +42,10 @@ class TeamActivityCheckModel {
       organizerId: organizerId,
       organizerName: organizerName,
       startedAt: now,
-      expiresAt: now.add(const Duration(hours: 2)),
+      expiresAt: now.add(const Duration(minutes: 15)), // 15 минут
       teamMembers: teamMembers.where((id) => id != organizerId).toList(),
       readyPlayers: [],
+      notReadyPlayers: [],
       isActive: true,
       isCompleted: false,
     );
@@ -55,7 +58,7 @@ class TeamActivityCheckModel {
   bool get areAllPlayersReady => readyPlayers.length == teamMembers.length;
 
   /// Возвращает количество игроков, которые еще не ответили
-  int get notRespondedCount => teamMembers.length - readyPlayers.length;
+  int get notRespondedCount => teamMembers.length - readyPlayers.length - notReadyPlayers.length;
 
   /// Возвращает процент готовности команды
   double get readinessPercentage {
@@ -63,8 +66,15 @@ class TeamActivityCheckModel {
     return (readyPlayers.length / teamMembers.length) * 100;
   }
 
-  /// Проверяет, ответил ли конкретный игрок
+  /// Проверяет, ответил ли конкретный игрок "готов"
   bool isPlayerReady(String playerId) => readyPlayers.contains(playerId);
+
+  /// Проверяет, ответил ли конкретный игрок "не готов"
+  bool isPlayerNotReady(String playerId) => notReadyPlayers.contains(playerId);
+
+  /// Проверяет, ответил ли конкретный игрок вообще
+  bool hasPlayerResponded(String playerId) => 
+      readyPlayers.contains(playerId) || notReadyPlayers.contains(playerId);
 
   /// Копирует модель с изменениями
   TeamActivityCheckModel copyWith({
@@ -76,6 +86,7 @@ class TeamActivityCheckModel {
     DateTime? expiresAt,
     List<String>? teamMembers,
     List<String>? readyPlayers,
+    List<String>? notReadyPlayers,
     bool? isActive,
     bool? isCompleted,
   }) {
@@ -88,6 +99,7 @@ class TeamActivityCheckModel {
       expiresAt: expiresAt ?? this.expiresAt,
       teamMembers: teamMembers ?? this.teamMembers,
       readyPlayers: readyPlayers ?? this.readyPlayers,
+      notReadyPlayers: notReadyPlayers ?? this.notReadyPlayers,
       isActive: isActive ?? this.isActive,
       isCompleted: isCompleted ?? this.isCompleted,
     );
@@ -104,6 +116,7 @@ class TeamActivityCheckModel {
       'expiresAt': Timestamp.fromDate(expiresAt),
       'teamMembers': teamMembers,
       'readyPlayers': readyPlayers,
+      'notReadyPlayers': notReadyPlayers,
       'isActive': isActive,
       'isCompleted': isCompleted,
     };
@@ -120,6 +133,7 @@ class TeamActivityCheckModel {
       expiresAt: (map['expiresAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       teamMembers: List<String>.from(map['teamMembers'] ?? []),
       readyPlayers: List<String>.from(map['readyPlayers'] ?? []),
+      notReadyPlayers: List<String>.from(map['notReadyPlayers'] ?? []),
       isActive: map['isActive'] ?? true,
       isCompleted: map['isCompleted'] ?? false,
     );
@@ -127,6 +141,6 @@ class TeamActivityCheckModel {
 
   @override
   String toString() {
-    return 'TeamActivityCheckModel(id: $id, teamId: $teamId, organizerId: $organizerId, readyPlayers: ${readyPlayers.length}/${teamMembers.length}, isActive: $isActive, isExpired: $isExpired)';
+    return 'TeamActivityCheckModel(id: $id, teamId: $teamId, organizerId: $organizerId, ready: ${readyPlayers.length}, notReady: ${notReadyPlayers.length}, notResponded: $notRespondedCount, isActive: $isActive, isExpired: $isExpired)';
   }
 } 

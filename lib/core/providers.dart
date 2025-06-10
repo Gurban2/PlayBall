@@ -76,24 +76,29 @@ final unreadSocialNotificationsCountProvider = FutureProvider.family<int, String
 });
 
 /// Общее количество непрочитанных уведомлений (игровые + социальные)
-final totalUnreadNotificationsCountProvider = FutureProvider.family<int, String>((ref, userId) async {
-  try {
-    final gameNotificationService = ref.read(gameNotificationServiceProvider);
-    final unifiedNotificationService = ref.read(unifiedNotificationServiceProvider);
-    
-    // Используем Future.wait для параллельного выполнения
-    final results = await Future.wait([
-      gameNotificationService.getUnreadCount(userId),
-      unifiedNotificationService.getUnreadNotificationsCount(userId),
-    ]);
-    
-    final totalCount = results[0] + results[1];
-    debugPrint('🔔 Общее количество уведомлений для $userId: $totalCount');
-    return totalCount;
-  } catch (e) {
-    debugPrint('❌ Ошибка получения общего количества уведомлений: $e');
-    return 0;
-  }
+final totalUnreadNotificationsCountProvider = StreamProvider.family<int, String>((ref, userId) {
+  final gameNotificationService = ref.read(gameNotificationServiceProvider);
+  
+  // Слушаем изменения игровых уведомлений в реальном времени
+  return gameNotificationService.getGameNotificationsStream(userId).asyncMap((gameNotifications) async {
+    try {
+      // Считаем непрочитанные игровые уведомления
+      final gameUnreadCount = gameNotifications
+          .where((notification) => !notification.isRead)
+          .length;
+      
+      // Получаем количество социальных уведомлений
+      final unifiedNotificationService = ref.read(unifiedNotificationServiceProvider);
+      final socialUnreadCount = await unifiedNotificationService.getUnreadNotificationsCount(userId);
+      
+      final totalCount = gameUnreadCount + socialUnreadCount;
+      debugPrint('🔔 Общее количество уведомлений для $userId: $totalCount (игровые: $gameUnreadCount, социальные: $socialUnreadCount)');
+      return totalCount;
+    } catch (e) {
+      debugPrint('❌ Ошибка получения количества уведомлений: $e');
+      return 0;
+    }
+  });
 });
 
 /// Автоинвалидируемый провайдер для уведомлений с таймером обновления

@@ -67,6 +67,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         name: _nameController.text.trim(),
         bio: _bioController.text.trim(),
         status: _selectedStatus,
+        photoUrl: _currentUser!.photoUrl, // Сохраняем текущий URL фото
       );
 
       if (mounted) {
@@ -87,7 +88,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   void _onPhotoUploaded(String photoUrl) {
-    // Фото уже загружено через PhotoUploadWidget, просто показываем успех
+    // Сохраняем новый URL фото для использования при сохранении профиля
+    setState(() {
+      _currentUser = _currentUser!.copyWith(photoUrl: photoUrl);
+    });
     ErrorHandler.showSuccess(context, 'Фото профиля обновлено!');
   }
 

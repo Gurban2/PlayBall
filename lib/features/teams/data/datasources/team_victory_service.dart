@@ -230,6 +230,8 @@ class TeamVictoryService {
   /// Получить команду игры по ID
   Future<TeamModel?> _getGameTeamById(String gameId, String teamId) async {
     try {
+      debugPrint('🔍 Ищем команду gameId: $gameId, teamId: $teamId');
+      
       final snapshot = await _firestore
           .collection('teams')
           .where('roomId', isEqualTo: gameId)
@@ -237,9 +239,27 @@ class TeamVictoryService {
           .limit(1)
           .get();
 
-      if (snapshot.docs.isEmpty) return null;
+      debugPrint('📋 Найдено команд по запросу: ${snapshot.docs.length}');
+      
+      if (snapshot.docs.isEmpty) {
+        // Дополнительная диагностика - проверим все команды этой игры
+        final allTeamsSnapshot = await _firestore
+            .collection('teams')
+            .where('roomId', isEqualTo: gameId)
+            .get();
+            
+        debugPrint('🔍 Всего команд в игре $gameId: ${allTeamsSnapshot.docs.length}');
+        for (final doc in allTeamsSnapshot.docs) {
+          final team = TeamModel.fromMap(doc.data());
+          debugPrint('📋 Команда: id=${team.id}, name=${team.name}, members=${team.members.length}');
+        }
+        
+        return null;
+      }
 
-      return TeamModel.fromMap(snapshot.docs.first.data());
+      final team = TeamModel.fromMap(snapshot.docs.first.data());
+      debugPrint('✅ Найдена команда: ${team.name} с ${team.members.length} участниками');
+      return team;
     } catch (e) {
       debugPrint('❌ Ошибка получения команды игры: $e');
       return null;

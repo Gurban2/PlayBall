@@ -44,22 +44,19 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     
-    // Подписываемся на изменения состояния приложения
+    // Подписываемся на изменения состояния приложения для обновления данных
     WidgetsBinding.instance.addObserver(this);
     
-    _loadDashboardData();
-    
-    // Автоматически обновляем статусы игр при загрузке
+    // Выполняем действия после построения интерфейса
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _updateGameStatuses();
+      _refreshData();
     });
   }
 
   @override
   void dispose() {
-    // Отписываемся от изменений состояния приложения
     WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
@@ -71,8 +68,17 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     
     // Обновляем данные при возвращении в приложение
     if (state == AppLifecycleState.resumed) {
-      debugPrint('🔄 Приложение возобновлено - обновляем dashboard организатора');
-      _loadDashboardData();
+      debugPrint('🔄 Приложение возобновлено - обновляем данные организатора');
+      _refreshData();
+    }
+  }
+
+  Future<void> _refreshData() async {
+    try {
+      // Обновляем данные организатора
+      await _loadDashboardData();
+    } catch (e) {
+      debugPrint('❌ Ошибка обновления данных: $e');
     }
   }
 
@@ -205,8 +211,6 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
               Tab(text: 'Обзор'),
               Tab(text: 'Активные'),
               Tab(text: 'План'),
-              Tab(text: 'История'),
-              Tab(text: 'Команды'),
             ],
           ),
         ),
@@ -219,8 +223,6 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
                 _buildOverviewTab(),
                 _buildActiveGamesTab(),
                 _buildPlannedGamesTab(),
-                _buildHistoryTab(),
-                _buildTeamsTab(),
               ],
             ),
       floatingActionButton: FloatingActionButton(
@@ -350,8 +352,6 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     );
   }
 
-
-
   Widget _buildOrganizerTeamsStats() {
     return Card(
       elevation: 4,
@@ -386,7 +386,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
                 ),
                 const SizedBox(width: 8),
                 InkWell(
-                  onTap: () => _tabController.animateTo(4),
+                  onTap: () => _tabController.animateTo(2),
                   borderRadius: BorderRadius.circular(6),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -605,8 +605,6 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     );
   }
 
-
-
   Widget _buildRecentCompletedGames() {
     final recentGames = _organizerRooms
         .where((room) => room.status == RoomStatus.completed)
@@ -648,7 +646,7 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
                 if (recentGames.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: () => _tabController.animateTo(3),
+                    onTap: () => _tabController.animateTo(2),
                     borderRadius: BorderRadius.circular(6),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -878,16 +876,14 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     }
   }
 
-
-
   Widget _buildQuickActionsList() {
     return Row(
       children: [
         Expanded(child: _buildCompactActionCard('Создать игру', Icons.add_circle, AppColors.primary, () => context.push(AppRoutes.createRoom))),
         const SizedBox(width: 8),
-        Expanded(child: _buildCompactActionCard('Команды', Icons.groups, AppColors.secondary, () => _tabController.animateTo(4))),
+        Expanded(child: _buildCompactActionCard('Команды', Icons.groups, AppColors.secondary, () => _tabController.animateTo(2))),
         const SizedBox(width: 8),
-        Expanded(child: _buildCompactActionCard('История', Icons.history, AppColors.warning, () => _tabController.animateTo(3))),
+        Expanded(child: _buildCompactActionCard('История', Icons.history, AppColors.warning, () => _tabController.animateTo(2))),
       ],
     );
   }
@@ -900,8 +896,6 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
       leading: Icon(icon, color: color, size: 16),
     );
   }
-
-
 
   Widget _buildActiveGamesTab() {
     final activeGames = _organizerRooms
@@ -1807,8 +1801,6 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
     return '${date.day}.${date.month}.${date.year}';
   }
 
-
-
   // Очистка завершенных игр
   Future<void> _clearCompletedGames() async {
     final confirmed = await showDialog<bool>(
@@ -1941,6 +1933,4 @@ class _OrganizerDashboardScreenState extends ConsumerState<OrganizerDashboardScr
       ),
     );
   }
-
-
 } 

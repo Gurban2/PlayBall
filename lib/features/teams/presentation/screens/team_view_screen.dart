@@ -7,6 +7,7 @@ import '../../../auth/domain/entities/user_model.dart';
 import '../../../teams/domain/entities/user_team_model.dart';
 import '../../../teams/domain/entities/team_activity_check_model.dart';
 import '../../../../shared/widgets/dialogs/player_profile_dialog.dart';
+import 'dart:async';
 
 class TeamViewScreen extends ConsumerStatefulWidget {
   final String teamId;
@@ -26,16 +27,31 @@ class _TeamViewScreenState extends ConsumerState<TeamViewScreen> {
   UserTeamModel? _team;
   List<UserModel> _teamMembers = [];
   bool _isLoading = true;
+  bool _isLoadingMembers = false;
+  bool _isJoining = false;
+  bool _isLeaving = false;
+  bool _isCheckingActivity = false;
+  TeamActivityCheckModel? _activeCheck;
+  Timer? _refreshTimer;
   String? _error;
   
-  // Состояние для проверки активности
-  TeamActivityCheckModel? _activeCheck;
-  bool _isCheckingActivity = false;
-
   @override
   void initState() {
     super.initState();
     _loadTeamData();
+    
+    // Автообновление каждые 30 секунд
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _loadTeamData();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadTeamData() async {
@@ -892,7 +908,7 @@ class _TeamViewScreenState extends ConsumerState<TeamViewScreen> {
                     Text(
                       isExpired 
                           ? 'Время истекло'
-                          : 'Осталось: ${timeLeftMinutes}ч ${timeLeft.inMinutes % 60}м',
+                          : 'Осталось: ${timeLeftMinutes} мин',
                       style: TextStyle(
                         fontSize: 12,
                         color: isExpired ? AppColors.error : AppColors.textSecondary,
@@ -927,53 +943,92 @@ class _TeamViewScreenState extends ConsumerState<TeamViewScreen> {
         // Кнопки действий
         Row(
           children: [
-            // Кнопка "Готов" для игроков
-            if (!isOwner && !_activeCheck!.isPlayerReady(currentUser.id) && !isExpired) ...[
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _confirmReadiness(_activeCheck!.id),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Готов'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+            // Кнопки для игроков (не организаторов)
+            if (!isOwner && !isExpired) ...[
+              if (!_activeCheck!.hasPlayerResponded(currentUser.id)) ...[
+                // Кнопка "Готов"
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _confirmReadiness(_activeCheck!.id),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Готов'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ] else if (!isOwner && _activeCheck!.isPlayerReady(currentUser.id)) ...[
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.success),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle, color: AppColors.success, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Готовность подтверждена',
-                        style: TextStyle(
-                          color: AppColors.success,
-                          fontWeight: FontWeight.w500,
-                        ),
+                const SizedBox(width: 8),
+                // Кнопка "Не готов"
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _declineReadiness(_activeCheck!.id),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Не готов'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+              ] else ...[
+                // Показываем статус ответа игрока
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _activeCheck!.isPlayerReady(currentUser.id) 
+                          ? AppColors.success.withValues(alpha: 0.1)
+                          : AppColors.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _activeCheck!.isPlayerReady(currentUser.id) 
+                            ? AppColors.success 
+                            : AppColors.error,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _activeCheck!.isPlayerReady(currentUser.id) 
+                              ? Icons.check_circle 
+                              : Icons.cancel,
+                          color: _activeCheck!.isPlayerReady(currentUser.id) 
+                              ? AppColors.success 
+                              : AppColors.error,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _activeCheck!.isPlayerReady(currentUser.id) 
+                              ? 'Готовность подтверждена'
+                              : 'Готовность отклонена',
+                          style: TextStyle(
+                            color: _activeCheck!.isPlayerReady(currentUser.id) 
+                                ? AppColors.success 
+                                : AppColors.error,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
             
             // Кнопка отмены для организатора
             if (isOwner && !isExpired) ...[
-              if (!isOwner || _activeCheck!.isPlayerReady(currentUser.id)) const SizedBox(width: 12),
+              if (!isOwner || _activeCheck!.hasPlayerResponded(currentUser.id)) const SizedBox(width: 12),
               TextButton.icon(
                 onPressed: () => _cancelActivityCheck(_activeCheck!.id),
                 icon: const Icon(Icons.cancel, size: 18),
@@ -985,6 +1040,12 @@ class _TeamViewScreenState extends ConsumerState<TeamViewScreen> {
             ],
           ],
         ),
+
+        // Детальная статистика для организатора
+        if (isOwner) ...[
+          const SizedBox(height: 16),
+          _buildDetailedPlayerStats(),
+        ],
       ],
     );
   }
@@ -1099,6 +1160,30 @@ class _TeamViewScreenState extends ConsumerState<TeamViewScreen> {
     }
   }
 
+  Future<void> _declineReadiness(String checkId) async {
+    final currentUser = ref.read(currentUserProvider).value;
+    if (currentUser == null) return;
+
+    try {
+      final activityService = ref.read(teamActivityServiceProvider);
+      await activityService.declineReadiness(
+        checkId: checkId,
+        playerId: currentUser.id,
+      );
+
+      if (mounted) {
+        ErrorHandler.showSuccess(context, 'Готовность отклонена');
+
+        // Обновляем данные
+        await _loadTeamData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
+    }
+  }
+
   Future<void> _cancelActivityCheck(String checkId) async {
     final currentUser = ref.read(currentUserProvider).value;
     if (currentUser == null) return;
@@ -1123,5 +1208,80 @@ class _TeamViewScreenState extends ConsumerState<TeamViewScreen> {
     }
   }
 
+  /// Детальная статистика игроков для организатора
+  Widget _buildDetailedPlayerStats() {
+    if (_activeCheck == null || _teamMembers.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Статус игроков:',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          
+          ..._teamMembers.where((member) => member.id != _activeCheck!.organizerId).map((member) {
+            final isReady = _activeCheck!.isPlayerReady(member.id);
+            final isNotReady = _activeCheck!.isPlayerNotReady(member.id);
+            final hasResponded = _activeCheck!.hasPlayerResponded(member.id);
+            
+            IconData icon;
+            Color color;
+            String status;
+            
+            if (isReady) {
+              icon = Icons.check_circle;
+              color = AppColors.success;
+              status = 'Готов';
+            } else if (isNotReady) {
+              icon = Icons.cancel;
+              color = AppColors.error;
+              status = 'Не готов';
+            } else {
+              icon = Icons.access_time;
+              color = AppColors.warning;
+              status = 'Ждем ответа';
+            }
+            
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      member.name,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Text(
+                    status,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
 } 

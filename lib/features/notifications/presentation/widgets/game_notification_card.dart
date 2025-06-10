@@ -143,15 +143,11 @@ class GameNotificationCard extends StatelessWidget {
                       _navigateToRoom(context);
                     },
                     icon: Icon(
-                      notification.type == GameNotificationType.evaluationRequired 
-                          ? Icons.star 
-                          : Icons.sports_volleyball, 
+                      _getActionIcon(), 
                       size: 14,
                     ),
                     label: Text(
-                      notification.type == GameNotificationType.evaluationRequired 
-                          ? 'Оценить' 
-                          : 'К игре',
+                      _getActionText(),
                       style: TextStyle(fontSize: 12),
                     ),
                     style: TextButton.styleFrom(
@@ -162,8 +158,6 @@ class GameNotificationCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  
-
                   
                   // Кнопка удаления
                   if (onDelete != null) ...[
@@ -312,9 +306,46 @@ class GameNotificationCard extends StatelessWidget {
     } else if (notification.type == GameNotificationType.winnerSelectionRequired) {
       // Для уведомлений о выборе победителя переходим на экран выбора победителя
       context.push('/winner-selection/${notification.roomId}');
+    } else if (notification.type == GameNotificationType.activityCheck || 
+               notification.type == GameNotificationType.activityCheckCompleted) {
+      // Для уведомлений о проверке готовности переходим на страницу команды
+      final teamId = notification.additionalData?['teamId'] ?? notification.roomId;
+      context.push('/team-view/$teamId');
     } else {
       // Для остальных уведомлений переходим к комнате
       context.push('/room/${notification.roomId}');
+    }
+  }
+
+  /// Получить иконку действия
+  IconData _getActionIcon() {
+    switch (notification.type) {
+      case GameNotificationType.evaluationRequired:
+        return Icons.star;
+      case GameNotificationType.winnerSelectionRequired:
+        return Icons.sports_volleyball;
+      case GameNotificationType.activityCheck:
+        return Icons.check;
+      case GameNotificationType.activityCheckCompleted:
+        return Icons.assessment;
+      default:
+        return Icons.sports_volleyball;
+    }
+  }
+
+  /// Получить текст действия
+  String _getActionText() {
+    switch (notification.type) {
+      case GameNotificationType.evaluationRequired:
+        return 'Оценить';
+      case GameNotificationType.winnerSelectionRequired:
+        return 'К игре';
+      case GameNotificationType.activityCheck:
+        return 'Ответить';
+      case GameNotificationType.activityCheckCompleted:
+        return 'Результаты';
+      default:
+        return 'К игре';
     }
   }
 }

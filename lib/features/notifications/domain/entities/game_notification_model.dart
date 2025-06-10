@@ -16,6 +16,7 @@ enum GameNotificationType {
   winnerSelectionRequired, // Требуется выбор команды-победителя
   playerEvaluated,  // Игрок получил оценку
   activityCheck,    // Проверка активности команды
+  activityCheckCompleted, // Проверка готовности завершена
 }
 
 /// Модель уведомлений о играх
@@ -291,8 +292,8 @@ class GameNotificationModel {
     required String teamName,
     required String organizerId,
     required String organizerName,
-    required List<String> recipientIds,
     required String checkId,
+    required List<String> recipientIds,
   }) {
     return GameNotificationModel(
       id: id,
@@ -309,6 +310,49 @@ class GameNotificationModel {
         'checkId': checkId,
         'teamId': teamId,
         'teamName': teamName,
+      },
+    );
+  }
+
+  /// Фабричный конструктор для уведомления о завершении проверки готовности
+  factory GameNotificationModel.activityCheckCompleted({
+    required String id,
+    required String teamId,
+    required String teamName,
+    required String organizerId,
+    required String organizerName,
+    required String checkId,
+    required int readyCount,
+    required int notReadyCount,
+    required int totalCount,
+  }) {
+    String resultMessage;
+    if (readyCount == totalCount) {
+      resultMessage = '🎉 Все игроки команды готовы! ($readyCount/$totalCount)';
+    } else if (notReadyCount > 0) {
+      resultMessage = '📊 Готовы: $readyCount, не готовы: $notReadyCount, не ответили: ${totalCount - readyCount - notReadyCount} из $totalCount';
+    } else {
+      resultMessage = '📊 Готовы: $readyCount из $totalCount игроков. ${totalCount - readyCount} не ответили.';
+    }
+
+    return GameNotificationModel(
+      id: id,
+      roomId: teamId,
+      roomTitle: teamName,
+      organizerId: organizerId,
+      organizerName: organizerName,
+      recipientIds: [organizerId], // Только организатору
+      type: GameNotificationType.activityCheckCompleted,
+      title: '✅ Проверка готовности завершена',
+      message: resultMessage,
+      createdAt: DateTime.now(),
+      additionalData: {
+        'checkId': checkId,
+        'teamId': teamId,
+        'teamName': teamName,
+        'readyCount': readyCount,
+        'notReadyCount': notReadyCount,
+        'totalCount': totalCount,
       },
     );
   }
@@ -387,6 +431,8 @@ class GameNotificationModel {
         return '⭐';
       case GameNotificationType.activityCheck:
         return '⚡';
+      case GameNotificationType.activityCheckCompleted:
+        return '✅';
     }
   }
 
@@ -421,6 +467,8 @@ class GameNotificationModel {
         return '#FFC107'; // желтый (золотой)
       case GameNotificationType.activityCheck:
         return '#9E9E9E'; // серый (для проверки активности)
+      case GameNotificationType.activityCheckCompleted:
+        return '#4CAF50'; // зеленый (для завершения проверки)
     }
   }
 

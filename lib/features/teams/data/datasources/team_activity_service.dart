@@ -44,11 +44,11 @@ class TeamActivityService {
         teamMembers: team.members,
       );
 
-      // Отправляем уведомления игрокам команды о необходимости подтверждения активности
+      // Отправляем уведомления ТОЛЬКО игрокам команды (не организатору)
       await _notificationService.notifyActivityCheck(
         teamId: teamId,
         teamName: team.name,
-        teamMembers: team.members,
+        teamMembers: teamMembers, // Только игроки, без организатора
       );
 
       debugPrint('✅ Проверка активности $checkId успешно запущена для команды "${team.name}"');
@@ -72,6 +72,23 @@ class TeamActivityService {
       debugPrint('✅ Готовность игрока $playerId подтверждена');
     } catch (e) {
       debugPrint('❌ Ошибка подтверждения готовности: $e');
+      rethrow;
+    }
+  }
+
+  /// Игрок отклоняет готовность
+  Future<void> declineReadiness({
+    required String checkId,
+    required String playerId,
+  }) async {
+    try {
+      debugPrint('❌ Игрок $playerId отклоняет готовность в проверке $checkId');
+
+      await _teamService.declinePlayerReadiness(checkId, playerId);
+
+      debugPrint('✅ Отклонение готовности игрока $playerId зафиксировано');
+    } catch (e) {
+      debugPrint('❌ Ошибка отклонения готовности: $e');
       rethrow;
     }
   }

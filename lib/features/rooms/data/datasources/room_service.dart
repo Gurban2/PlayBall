@@ -622,6 +622,16 @@ class RoomService {
       
       // Используем новую утилиту для проверки (теперь проверяет endTime)
       if (GameTimeUtils.shouldAutoCompleteGame(room)) {
+        // ДОБАВЛЯЕМ ПРОВЕРКУ: завершаем только если игра еще активна
+        final currentDoc = await _firestore.collection(_collection).doc(doc.id).get();
+        if (!currentDoc.exists) continue;
+        
+        final currentRoom = RoomModel.fromMap(currentDoc.data()!);
+        if (currentRoom.status != RoomStatus.active) {
+          debugPrint('⚠️ Игра ${room.title} уже не активна, пропускаем автозавершение');
+          continue;
+        }
+        
         batch.update(doc.reference, {
           'status': RoomStatus.completed.toString().split('.').last,
           'updatedAt': Timestamp.now(),
@@ -666,6 +676,7 @@ class RoomService {
     
     if (completedCount > 0) {
       await batch.commit();
+      debugPrint('✅ Автоматически завершено игр: $completedCount');
     }
   }
 

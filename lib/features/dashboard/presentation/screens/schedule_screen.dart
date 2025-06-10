@@ -35,16 +35,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     // Подписываемся на изменения состояния приложения
     WidgetsBinding.instance.addObserver(this);
     
-    // Слушаем изменения в поисковике
+    // Подписываемся на изменения поискового запроса
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.toLowerCase();
       });
-    });
-    
-    // Запускаем автоматическое завершение просроченных матчей
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _autoCompleteExpiredGames();
     });
     
     // Обновляем данные при инициализации
@@ -83,16 +78,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     ref.refresh(plannedRoomsProvider);
     // ignore: unused_result
     ref.refresh(userRoomsProvider);
-    _autoCompleteExpiredGames();
-  }
-
-  Future<void> _autoCompleteExpiredGames() async {
-    try {
-      final roomService = ref.read(roomServiceProvider);
-      await roomService.autoCompleteExpiredGames();
-    } catch (e) {
-      debugPrint('Ошибка автоматического завершения матчей: $e');
-    }
   }
 
   // Функция для обработки ошибок Firebase с кликабельными ссылками
@@ -1037,8 +1022,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
     return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
-
-
   Color _getStatusColor(RoomStatus status) {
     switch (status) {
       case RoomStatus.planned:
@@ -1051,10 +1034,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         return AppColors.error;
     }
   }
-
-
-
-
 
   // Функция для проверки, является ли дата сегодняшней
   bool _isSameDay(DateTime date1, DateTime date2) {
