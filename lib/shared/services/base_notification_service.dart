@@ -210,6 +210,36 @@ abstract class BaseNotificationService {
     );
   }
 
+  /// Удалить все уведомления пользователя
+  Future<void> deleteAllNotifications(String userId) async {
+    await executeVoidWithLogging(
+      'удаления всех уведомлений пользователя',
+      () async {
+        final querySnapshot = await _firestore
+            .collection(collectionName)
+            .where('recipientIds', arrayContains: userId)
+            .get();
+
+        if (querySnapshot.docs.isEmpty) {
+          logInfo('Нет уведомлений для удаления для пользователя $userId');
+          return;
+        }
+
+        final notificationsCount = querySnapshot.docs.length;
+        final batch = _firestore.batch();
+        
+        for (var doc in querySnapshot.docs) {
+          batch.delete(doc.reference);
+        }
+
+        await batch.commit();
+        
+        logInfo('Удалено $notificationsCount уведомлений для пользователя $userId');
+      },
+      successDetails: 'пользователь $userId',
+    );
+  }
+
   /// Получить количество непрочитанных уведомлений
   Future<int> getUnreadCount(String userId) async {
     return executeWithLogging(

@@ -245,4 +245,44 @@ class UnifiedNotificationService {
         return UnifiedNotificationStatus.declined;
     }
   }
+
+  // Удалить все социальные уведомления пользователя
+  Future<void> deleteAllNotifications(String userId) async {
+    try {
+      debugPrint('🗑️ Удаляем все социальные уведомления для пользователя: $userId');
+      
+      // Удаляем все заявки в друзья (входящие)
+      final incomingFriendRequests = await _userService.getIncomingFriendRequests(userId);
+      for (final request in incomingFriendRequests) {
+        await _userService.declineFriendRequest(request.id);
+      }
+      
+      // Удаляем все приглашения в команды (входящие)
+      final incomingTeamInvitations = await _teamService.getIncomingTeamInvitations(userId);
+      for (final invitation in incomingTeamInvitations) {
+        await _teamService.declineTeamInvitation(invitation.id);
+      }
+      
+      // Удаляем все уведомления об исключении из команд
+      final notificationSnapshot = await _firestore
+          .collection('notifications')
+          .where('toUserId', isEqualTo: userId)
+          .get();
+
+      if (notificationSnapshot.docs.isNotEmpty) {
+        final batch = _firestore.batch();
+        
+        for (var doc in notificationSnapshot.docs) {
+          batch.delete(doc.reference);
+        }
+
+        await batch.commit();
+      }
+      
+      debugPrint('✅ Все социальные уведомления удалены для пользователя: $userId');
+    } catch (e) {
+      debugPrint('❌ Ошибка удаления всех социальных уведомлений: $e');
+      rethrow;
+    }
+  }
 } 

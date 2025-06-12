@@ -178,6 +178,26 @@ class _EnhancedNotificationsScreenState extends ConsumerState<EnhancedNotificati
             onPressed: _loadNotifications,
             tooltip: 'Обновить',
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'delete_all') {
+                _showDeleteAllConfirmationDialog();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'delete_all',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_sweep, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Удалить все'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -549,7 +569,61 @@ class _EnhancedNotificationsScreenState extends ConsumerState<EnhancedNotificati
     }
   }
 
+  Future<void> _showDeleteAllConfirmationDialog() async {
+    final user = _currentUser;
+    if (user == null) return;
 
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить все уведомления'),
+        content: const Text('Вы уверены, что хотите удалить все уведомления?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await _deleteAllNotifications();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteAllNotifications() async {
+    try {
+      final user = _currentUser;
+      if (user == null) return;
+
+      await _gameNotificationService.deleteAllNotifications(user.id);
+      await _unifiedNotificationService.deleteAllNotifications(user.id);
+
+      if (mounted) {
+        setState(() {
+          _gameNotifications.clear();
+          _socialNotifications.clear();
+          _friendRequestsCount = 0;
+          _teamInvitationsCount = 0;
+        });
+      }
+      
+      // Обновляем провайдеры счетчика уведомлений
+      ref.invalidate(unreadGameNotificationsCountProvider(user.id));
+      ref.invalidate(totalUnreadNotificationsCountProvider(user.id));
+      ref.invalidate(unreadSocialNotificationsCountProvider(user.id));
+      ref.invalidate(totalUnreadNotificationsCountProvider(user.id));
+    } catch (e) {
+      debugPrint('❌ Ошибка удаления всех уведомлений: $e');
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
+    }
+  }
 
   // Вспомогательные методы
 

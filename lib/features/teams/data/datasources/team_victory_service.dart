@@ -88,18 +88,18 @@ class TeamVictoryService {
         throw Exception('Команда-победитель для этой игры уже выбрана');
       }
 
-      // Получаем информацию о команде-победителе из временных команд игры
-      final winnerTeam = await _getGameTeamById(gameId, winnerTeamId);
-      if (winnerTeam == null) {
-        throw Exception('Команда-победитель не найдена');
-      }
-
       // Получаем информацию об игре для определения режима
       final roomDoc = await _firestore.collection('rooms').doc(gameId).get();
       if (!roomDoc.exists) {
         throw Exception('Игра не найдена');
       }
       final room = RoomModel.fromMap(roomDoc.data()!);
+
+      // Получаем информацию о команде-победителе в зависимости от режима игры
+      final winnerTeam = await _getGameTeamById(gameId, winnerTeamId, room.gameMode);
+      if (winnerTeam == null) {
+        throw Exception('Команда-победитель не найдена');
+      }
 
       final batch = _firestore.batch();
       final now = DateTime.now();
@@ -227,39 +227,78 @@ class TeamVictoryService {
     }
   }
 
-  /// Получить команду игры по ID
-  Future<TeamModel?> _getGameTeamById(String gameId, String teamId) async {
+  /// Получить команду игры по ID (в зависимости от режима игры)
+  Future<TeamModel?> _getGameTeamById(String gameId, String teamId, GameMode gameMode) async {
     try {
-      debugPrint('🔍 Ищем команду gameId: $gameId, teamId: $teamId');
+      debugPrint('🔍 Ищем команду в игре $gameId: teamId=$teamId, режим=${gameMode.name}');
       
-      final snapshot = await _firestore
-          .collection('teams')
-          .where('roomId', isEqualTo: gameId)
-          .where('id', isEqualTo: teamId)
-          .limit(1)
-          .get();
+      if (gameMode == GameMode.normal) {
+        // ОБЫЧНЫЙ РЕЖИМ: ищем временную команду игры напрямую по ID
+        debugPrint('🎯 Обычный режим - ищем команду по ID: $teamId');
+        
+        final snapshot = await _firestore
+            .collection('teams')
+            .where('roomId', isEqualTo: gameId)
+            .where('id', isEqualTo: teamId)
+            .limit(1)
+            .get();
 
-      debugPrint('📋 Найдено команд по запросу: ${snapshot.docs.length}');
-      
-      if (snapshot.docs.isEmpty) {
-        // Дополнительная диагностика - проверим все команды этой игры
+        if (snapshot.docs.isEmpty) {
+          debugPrint('❌ Команда $teamId не найдена в игре $gameId');
+          return null;
+        }
+
+        final team = TeamModel.fromMap(snapshot.docs.first.data());
+        debugPrint('✅ Найдена команда в обычном режиме: ${team.name}');
+        return team;
+        
+      } else {
+        // КОМАНДНЫЙ РЕЖИМ: ищем связь с постоянными командами
+        debugPrint('🎯 Командный режим - ищем через постоянную команду: $teamId');
+        
+        final userTeamDoc = await _firestore
+            .collection('user_teams')
+            .doc(teamId)
+            .get();
+        
+        if (!userTeamDoc.exists) {
+          debugPrint('❌ Постоянная команда $teamId не найдена');
+          return null;
+        }
+        
+        final userTeamData = userTeamDoc.data()!;
+        final userTeamMembers = List<String>.from(userTeamData['members'] ?? []);
+        
+        debugPrint('🔍 Состав постоянной команды: $userTeamMembers');
+        
+        // Ищем временную команду игры с тем же составом участников
         final allTeamsSnapshot = await _firestore
             .collection('teams')
             .where('roomId', isEqualTo: gameId)
             .get();
             
-        debugPrint('🔍 Всего команд в игре $gameId: ${allTeamsSnapshot.docs.length}');
+        debugPrint('🔍 Всего временных команд в игре $gameId: ${allTeamsSnapshot.docs.length}');
+        
         for (final doc in allTeamsSnapshot.docs) {
           final team = TeamModel.fromMap(doc.data());
-          debugPrint('📋 Команда: id=${team.id}, name=${team.name}, members=${team.members.length}');
+          debugPrint('📋 Проверяем команду: id=${team.id}, name=${team.name}, members=${team.members}');
+          
+          // Проверяем, совпадают ли составы команд
+          final gameTeamMembers = team.members.toSet();
+          final userTeamMembersSet = userTeamMembers.toSet();
+          
+          // Команды считаются одинаковыми, если у них одинаковый состав
+          if (gameTeamMembers.isNotEmpty && 
+              userTeamMembersSet.isNotEmpty &&
+              gameTeamMembers.intersection(userTeamMembersSet).length >= gameTeamMembers.length * 0.5) {
+            debugPrint('✅ Найдена соответствующая игровая команда: ${team.name}');
+            return team;
+          }
         }
         
+        debugPrint('❌ Игровая команда для постоянной команды $teamId не найдена');
         return null;
       }
-
-      final team = TeamModel.fromMap(snapshot.docs.first.data());
-      debugPrint('✅ Найдена команда: ${team.name} с ${team.members.length} участниками');
-      return team;
     } catch (e) {
       debugPrint('❌ Ошибка получения команды игры: $e');
       return null;

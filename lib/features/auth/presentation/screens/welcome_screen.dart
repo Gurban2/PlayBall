@@ -1,26 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../../../core/providers.dart';
+import '../../../../shared/widgets/enhanced_animations.dart';
 import '../../domain/entities/user_model.dart';
 
-class WelcomeScreen extends ConsumerWidget {
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
+    with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _slideController;
+  late Animation<double> _pulseAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: true);
+    
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.elasticOut));
+    
+    _slideController.forward();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _slideController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
     
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(
           AppStrings.appName,
-          style: AppTextStyles.appBarTitle,
+          style: GoogleFonts.orbitron(
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+            color: Colors.white,
+          ),
         ),
-        backgroundColor: AppColors.darkGrey,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           userAsync.when(
@@ -35,73 +84,12 @@ class WelcomeScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            error: (error, stack) => TextButton(
-              onPressed: () => context.push(AppRoutes.login),
-              child: const Text(
-                'Войти',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            error: (error, stack) => _buildAuthButton(context, 'Войти', AppRoutes.login),
             data: (user) {
               if (user == null) {
-                return TextButton(
-                  onPressed: () => context.push(AppRoutes.login),
-                  child: const Text(
-                    'Войти',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                );
+                return _buildAuthButton(context, 'Войти', AppRoutes.login);
               } else {
-                return PopupMenuButton<String>(
-                  icon: CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: Text(
-                      user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  onSelected: (value) {
-                    switch (value) {
-                      case 'profile':
-                        context.push(AppRoutes.profile);
-                        break;
-                      case 'logout':
-                        _logout(context, ref);
-                        break;
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'profile',
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person),
-                          const SizedBox(width: 8),
-                          Text('Привет, ${user.name}!'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'logout',
-                      child: Row(
-                        children: [
-                          Icon(Icons.logout),
-                          SizedBox(width: 8),
-                          Text('Выйти'),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
+                return _buildUserMenu(context, user);
               }
             },
           ),
@@ -109,332 +97,561 @@ class WelcomeScreen extends ConsumerWidget {
       ),
       body: Container(
         decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/schedule/schedule_bg.png'),
-            fit: BoxFit.cover,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF1E3C72),
+              Color(0xFF2A5298),
+              Color(0xFF6DD5FA),
+              Color(0xFFFFE000),
+            ],
+            stops: [0.0, 0.3, 0.7, 1.0],
           ),
         ),
-        child: SingleChildScrollView(
-          child: Column(
+        child: Stack(
           children: [
-            // Hero Section
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage('assets/images/setka.jfif'),
-                  fit: BoxFit.cover,
-                ),
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.8),
-                      AppColors.secondary.withValues(alpha: 0.8),
-                    ],
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSizes.extraLargeSpace),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.sports_volleyball,
-                        size: 120,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: AppSizes.mediumSpace),
-                      const Text(
-                        'Добро пожаловать в PlayBall!',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: AppSizes.smallSpace),
-                      const Text(
-                        'Организуй и участвуй в волейбольных играх\nс друзьями и новыми знакомыми',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: AppSizes.largeSpace),
-                      userAsync.when(
-                        loading: () => const SizedBox.shrink(),
-                        error: (error, stack) => const SizedBox.shrink(),
-                        data: (user) {
-                          if (user == null) {
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: () => context.push(AppRoutes.login),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      foregroundColor: AppColors.primary,
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(AppSizes.buttonRadius),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Войти',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: AppSizes.mediumSpace),
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => context.push(AppRoutes.register),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.white,
-                                      side: const BorderSide(color: Colors.white),
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(AppSizes.buttonRadius),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Регистрация',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            // Декоративные элементы
+            ..._buildFloatingElements(),
             
-            // Action Cards Section
-            Padding(
-              padding: AppSizes.screenPadding,
+            // Основной контент
+            SingleChildScrollView(
               child: Column(
                 children: [
-                  const SizedBox(height: AppSizes.largeSpace),
-                  const Text(
-                    'Что ты хочешь сделать?',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.text,
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.largeSpace),
+                  // Hero Section
+                  _buildHeroSection(userAsync),
                   
-                  // Action Cards
-                  _buildActionCard(
-                    context: context,
-                    icon: Icons.list,
-                    title: 'Посмотреть игры',
-                    subtitle: 'Найди интересную игру и присоединись',
-                    color: AppColors.primary,
-                    onTap: () => context.push(AppRoutes.home),
+                  // Action Cards Section
+                  SlideTransition(
+                    position: _slideAnimation,
+                    child: _buildActionSection(context, userAsync),
                   ),
                   
-                  const SizedBox(height: AppSizes.mediumSpace),
-                  
-                  userAsync.when(
-                    loading: () => const SizedBox.shrink(),
-                    error: (error, stack) => const SizedBox.shrink(),
-                    data: (user) {
-                      if (user?.role == UserRole.organizer || user?.role == UserRole.admin) {
-                        return Column(
-                          children: [
-                            _buildActionCard(
-                              context: context,
-                              icon: Icons.add_circle,
-                              title: 'Создать игру',
-                              subtitle: 'Организуй новую волейбольную игру',
-                              color: AppColors.secondary,
-                              onTap: () => context.push(AppRoutes.createRoom),
-                            ),
-                            const SizedBox(height: AppSizes.mediumSpace),
-                          ],
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                  
-                  _buildActionCard(
-                    context: context,
-                    icon: Icons.info_outline,
-                    title: 'О приложении',
-                    subtitle: 'Узнай больше о PlayBall',
-                    color: AppColors.accent,
-                    onTap: () => _showAboutDialog(context),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Features Section
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(top: AppSizes.extraLargeSpace),
-              padding: AppSizes.screenPadding,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  topRight: Radius.circular(24),
-                ),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'Возможности PlayBall',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.text,
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.largeSpace),
-                  
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildFeatureItem(
-                          icon: Icons.schedule,
-                          title: 'Планирование',
-                          description: 'Создавай и планируй игры заранее',
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildFeatureItem(
-                          icon: Icons.group,
-                          title: 'Команды',
-                          description: 'Формируй команды и играй с друзьями',
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: AppSizes.largeSpace),
-                  
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildFeatureItem(
-                          icon: Icons.location_on,
-                          title: 'Локации',
-                          description: 'Находи игры рядом с тобой',
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildFeatureItem(
-                          icon: Icons.notifications,
-                          title: 'Уведомления',
-                          description: 'Получай уведомления о играх',
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: AppSizes.extraLargeSpace),
+                  // Features Section
+                  _buildFeaturesSection(),
                 ],
               ),
             ),
           ],
         ),
       ),
-    ),
     );
   }
 
-  Widget _buildActionCard({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: AppSizes.cardElevation,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSizes.cardRadius),
+  Widget _buildAuthButton(BuildContext context, String text, String route) {
+    return Container(
+      margin: const EdgeInsets.only(right: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF6B35).withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppSizes.cardRadius),
-        child: Padding(
-          padding: AppSizes.cardPadding,
+      child: TextButton(
+        onPressed: () => context.push(route),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+        child: Text(
+          text,
+          style: GoogleFonts.rajdhani(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserMenu(BuildContext context, UserModel user) {
+    return PopupMenuButton<String>(
+      icon: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF6B35).withOpacity(0.5),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: CircleAvatar(
+          backgroundColor: Colors.transparent,
+          child: Text(
+            user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
+            style: GoogleFonts.orbitron(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+      onSelected: (value) {
+        switch (value) {
+          case 'profile':
+            context.push(AppRoutes.profile);
+            break;
+          case 'logout':
+            _logout(context, ref);
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'profile',
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: AppSizes.largeIconSize,
-                ),
-              ),
-              const SizedBox(width: AppSizes.mediumSpace),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.text,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSizes.smallSpace),
-              const Icon(
-                Icons.arrow_forward_ios,
-                color: AppColors.textSecondary,
-                size: 16,
-              ),
+              const Icon(Icons.person, color: Color(0xFFFF6B35)),
+              const SizedBox(width: 8),
+              Text('Привет, ${user.name}!', style: GoogleFonts.rajdhani()),
             ],
           ),
+        ),
+        PopupMenuItem(
+          value: 'logout',
+          child: Row(
+            children: [
+              const Icon(Icons.logout, color: Color(0xFFFF6B35)),
+              const SizedBox(width: 8),
+              Text('Выйти', style: GoogleFonts.rajdhani()),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroSection(AsyncValue<UserModel?> userAsync) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      width: double.infinity,
+      child: Stack(
+        children: [
+          // Анимированная иконка волейбола
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                                 PulsingWidget(
+                   duration: const Duration(seconds: 2),
+                   minScale: 1.0,
+                   maxScale: 1.15,
+                   child: Container(
+                     padding: const EdgeInsets.all(20),
+                     decoration: BoxDecoration(
+                       shape: BoxShape.circle,
+                       gradient: RadialGradient(
+                         colors: [
+                           Colors.orange.withOpacity(0.8),
+                           Colors.deepOrange.withOpacity(0.6),
+                           Colors.transparent,
+                         ],
+                       ),
+                       boxShadow: [
+                         BoxShadow(
+                           color: Colors.orange.withOpacity(0.6),
+                           blurRadius: 30,
+                           spreadRadius: 10,
+                         ),
+                       ],
+                     ),
+                     child: const Icon(
+                       Icons.sports_volleyball,
+                       size: 120,
+                       color: Colors.white,
+                     ),
+                   ),
+                 ),
+                
+                const SizedBox(height: 30),
+                
+                Text(
+                  'Добро пожаловать в',
+                  style: GoogleFonts.rajdhani(
+                    fontSize: 24,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                
+                Text(
+                  'PlayBall!',
+                  style: GoogleFonts.orbitron(
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withOpacity(0.3),
+                        offset: const Offset(2, 2),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                
+                const SizedBox(height: 15),
+                
+                Text(
+                  'Организуй и участвуй в волейбольных играх\nс друзьями и новыми знакомыми',
+                  style: GoogleFonts.rajdhani(
+                    fontSize: 18,
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                
+                const SizedBox(height: 40),
+                
+                userAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (error, stack) => const SizedBox.shrink(),
+                  data: (user) {
+                    if (user == null) {
+                      return _buildAuthButtons();
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildPowerButton('Войти', Icons.login, () => context.push(AppRoutes.login)),
+        const SizedBox(width: 20),
+        _buildPowerButton('Регистрация', Icons.person_add, () => context.push(AppRoutes.register), 
+          isSecondary: true),
+      ],
+    );
+  }
+
+  Widget _buildPowerButton(String text, IconData icon, VoidCallback onPressed, {bool isSecondary = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        gradient: isSecondary 
+          ? null
+          : const LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)]),
+        border: isSecondary ? Border.all(color: Colors.white, width: 2) : null,
+        boxShadow: [
+          BoxShadow(
+            color: isSecondary 
+              ? Colors.white.withOpacity(0.3)
+              : const Color(0xFFFF6B35).withOpacity(0.5),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isSecondary ? Colors.transparent : Colors.transparent,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: GoogleFonts.rajdhani(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionSection(BuildContext context, AsyncValue<UserModel?> userAsync) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Text(
+            'Что ты хочешь сделать?',
+            style: GoogleFonts.orbitron(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withOpacity(0.3),
+                  offset: const Offset(1, 1),
+                  blurRadius: 2,
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 30),
+          
+          _buildSportyActionCard(
+            title: 'Посмотреть игры',
+            subtitle: 'Найди игру своей мечты!',
+            icon: Icons.sports_volleyball,
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+            ),
+            onTap: () => context.push(AppRoutes.home),
+          ),
+          
+          const SizedBox(height: 20),
+          
+          userAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (error, stack) => const SizedBox.shrink(),
+            data: (user) {
+              if (user?.role == UserRole.organizer || user?.role == UserRole.admin) {
+                return Column(
+                  children: [
+                    _buildSportyActionCard(
+                      title: 'Создать игру',
+                      subtitle: 'Организуй эпичную битву!',
+                      icon: Icons.add_circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
+                      ),
+                      onTap: () => context.push(AppRoutes.createRoom),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          
+          _buildSportyActionCard(
+            title: 'О приложении',
+            subtitle: 'Узнай больше о PlayBall',
+            icon: Icons.info_outline,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+            ),
+            onTap: () => _showAboutDialog(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+        Widget _buildSportyActionCard({
+     required String title,
+     required String subtitle,
+     required IconData icon,
+     required Gradient gradient,
+     required VoidCallback onTap,
+   }) {
+     return SlideInWidget(
+       duration: const Duration(milliseconds: 800),
+       delay: const Duration(milliseconds: 200),
+       beginOffset: const Offset(0.3, 0),
+       child: Container(
+         height: 120,
+         decoration: BoxDecoration(
+           gradient: gradient,
+           borderRadius: BorderRadius.circular(20),
+           boxShadow: [
+             BoxShadow(
+               color: Colors.black.withOpacity(0.2),
+               blurRadius: 15,
+               offset: const Offset(0, 8),
+             ),
+           ],
+         ),
+         child: Material(
+           color: Colors.transparent,
+           child: InkWell(
+             onTap: onTap,
+             borderRadius: BorderRadius.circular(20),
+             child: Stack(
+               children: [
+                 // Декоративные элементы
+                 Positioned(
+                   top: -30,
+                   right: -30,
+                   child: Container(
+                     width: 100,
+                     height: 100,
+                     decoration: BoxDecoration(
+                       shape: BoxShape.circle,
+                       color: Colors.white.withOpacity(0.1),
+                     ),
+                   ),
+                 ),
+                 
+                 // Основной контент
+                 Padding(
+                   padding: const EdgeInsets.all(20),
+                   child: Row(
+                     children: [
+                       Container(
+                         padding: const EdgeInsets.all(16),
+                         decoration: BoxDecoration(
+                           color: Colors.white.withOpacity(0.2),
+                           borderRadius: BorderRadius.circular(16),
+                           border: Border.all(
+                             color: Colors.white.withOpacity(0.3),
+                             width: 2,
+                           ),
+                         ),
+                         child: Icon(icon, size: 32, color: Colors.white),
+                       ),
+                       
+                       const SizedBox(width: 20),
+                       
+                       Expanded(
+                         child: Column(
+                           crossAxisAlignment: CrossAxisAlignment.start,
+                           mainAxisAlignment: MainAxisAlignment.center,
+                           children: [
+                             Text(
+                               title,
+                               style: GoogleFonts.orbitron(
+                                 fontSize: 20,
+                                 fontWeight: FontWeight.bold,
+                                 color: Colors.white,
+                               ),
+                             ),
+                             const SizedBox(height: 4),
+                             Text(
+                               subtitle,
+                               style: GoogleFonts.rajdhani(
+                                 fontSize: 16,
+                                 color: Colors.white.withOpacity(0.9),
+                                 fontWeight: FontWeight.w500,
+                               ),
+                             ),
+                           ],
+                         ),
+                       ),
+                       
+                       Container(
+                         padding: const EdgeInsets.all(8),
+                         decoration: BoxDecoration(
+                           color: Colors.white.withOpacity(0.2),
+                           borderRadius: BorderRadius.circular(12),
+                         ),
+                         child: const Icon(
+                           Icons.arrow_forward_ios,
+                           color: Colors.white,
+                           size: 16,
+                         ),
+                       ),
+                     ],
+                   ),
+                 ),
+               ],
+             ),
+           ),
+         ),
+       ),
+     );
+   }
+
+  Widget _buildFeaturesSection() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 40),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(30),
+          topRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, -10),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          children: [
+            Text(
+              'Возможности PlayBall',
+              style: GoogleFonts.orbitron(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF2D3748),
+              ),
+            ),
+            
+            const SizedBox(height: 30),
+            
+            Row(
+              children: [
+                Expanded(child: _buildFeatureItem(
+                  icon: Icons.schedule,
+                  title: 'Планирование',
+                  description: 'Создавай игры заранее',
+                  color: const Color(0xFFFF6B35),
+                )),
+                Expanded(child: _buildFeatureItem(
+                  icon: Icons.group,
+                  title: 'Команды',
+                  description: 'Играй с друзьями',
+                  color: const Color(0xFF11998E),
+                )),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            Row(
+              children: [
+                Expanded(child: _buildFeatureItem(
+                  icon: Icons.location_on,
+                  title: 'Локации',
+                  description: 'Находи игры рядом',
+                  color: const Color(0xFF667EEA),
+                )),
+                Expanded(child: _buildFeatureItem(
+                  icon: Icons.notifications,
+                  title: 'Уведомления',
+                  description: 'Не пропускай игры',
+                  color: const Color(0xFFE53E3E),
+                )),
+              ],
+            ),
+            
+            const SizedBox(height: 40),
+          ],
         ),
       ),
     );
@@ -444,50 +661,79 @@ class WelcomeScreen extends ConsumerWidget {
     required IconData icon,
     required String title,
     required String description,
+    required Color color,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [color, color.withOpacity(0.7)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-            child: Icon(
-              icon,
-              color: AppColors.primary,
-              size: AppSizes.largeIconSize,
-            ),
+            child: Icon(icon, color: Colors.white, size: 32),
           ),
-          const SizedBox(height: AppSizes.smallSpace),
+          
+          const SizedBox(height: 15),
+          
           Text(
             title,
-            style: const TextStyle(
+            style: GoogleFonts.orbitron(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: AppColors.text,
+              color: const Color(0xFF2D3748),
             ),
             textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 4),
+          
+          const SizedBox(height: 5),
+          
           Text(
             description,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
+            style: GoogleFonts.rajdhani(
+              fontSize: 14,
+              color: const Color(0xFF718096),
+              fontWeight: FontWeight.w500,
             ),
             textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildFloatingElements() {
+    return List.generate(20, (index) {
+      final icons = [
+        Icons.sports_volleyball, 
+        Icons.sports_tennis, 
+        Icons.sports_soccer,
+        Icons.sports_basketball,
+        Icons.sports_handball,
+      ];
+      
+      return Positioned(
+        left: (index * 47) % MediaQuery.of(context).size.width,
+        top: (index * 73) % MediaQuery.of(context).size.height,
+        child: FloatingIcon(
+          icon: icons[index % icons.length],
+          delay: Duration(milliseconds: index * 100),
+          color: Colors.white,
+          size: 15 + (index % 4) * 8,
+        ),
+      );
+    });
   }
 
   void _logout(BuildContext context, WidgetRef ref) async {
@@ -495,7 +741,7 @@ class WelcomeScreen extends ConsumerWidget {
       final authService = ref.read(authServiceProvider);
       await authService.signOut();
       if (context.mounted) {
-        context.go(AppRoutes.welcome); // Возвращаемся на welcome page
+        context.go(AppRoutes.welcome);
       }
     } catch (e) {
       if (context.mounted) {
@@ -508,32 +754,40 @@ class WelcomeScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('О приложении PlayBall'),
-        content: const Column(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'О приложении PlayBall',
+          style: GoogleFonts.orbitron(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'PlayBall - это приложение для организации волейбольных игр.',
-              style: TextStyle(fontSize: 16),
+              style: GoogleFonts.rajdhani(fontSize: 16),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
               'Возможности:',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: GoogleFonts.orbitron(fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 8),
-            Text('• Создание и планирование игр'),
-            Text('• Поиск игр рядом с вами'),
-            Text('• Формирование команд'),
-            Text('• Уведомления о играх'),
-            Text('• Статистика и рейтинги'),
+            const SizedBox(height: 8),
+            ...['• Создание и планирование игр', '• Поиск игр рядом с вами', '• Формирование команд', '• Уведомления о играх', '• Статистика и рейтинги']
+                .map((text) => Text(text, style: GoogleFonts.rajdhani())),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Закрыть'),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B35),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: Text(
+              'Закрыть',
+              style: GoogleFonts.rajdhani(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
